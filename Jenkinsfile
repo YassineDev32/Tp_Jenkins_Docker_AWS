@@ -1,18 +1,32 @@
 pipeline {
     agent any
+
     stages {
-        stage('Test SSH vers AWS EC2') {
+        stage('Test SSH Connection') {
             steps {
-                sshagent(credentials: ['aws-ec2-deploy-key']) {
-                    script {
-                        // Test de base
-                        bat 'ssh -vvv -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo \'CONNEXION SSH VALIDÉE\'"'
-                        
-                        // Vérification Docker (avec timeout)
-                        bat 'ssh -o ConnectTimeout=10 ubuntu@51.21.180.149 "docker --version || echo \'Docker non installé\'"'
-                        
-                        // Vérification système
-                        bat 'ssh ubuntu@51.21.180.149 "whoami && hostname && df -h"'
+                script {
+                    try {
+                        // Méthode 1: Avec sshagent (si plugin installé)
+                        sshagent(['aws-ec2-deploy-key']) {
+                            bat 'ssh -vvv -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo \'Méthode sshagent: Connexion réussie\'"'
+                        }
+
+                        // Méthode 2: Avec withCredentials (alternative)
+                        withCredentials([sshUserPrivateKey(
+                            credentialsId: 'aws-ec2-deploy-key',
+                            keyFileVariable: 'SSH_KEY'
+                        )]) {
+                            bat """
+                                ssh -vvv -i "%SSH_KEY%" -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo 'Méthode withCredentials: Connexion réussie'"
+                            """
+                        }
+
+                        // Méthode 3: Commande directe (pour debug)
+                        bat 'where ssh'
+                        bat 'whoami'
+                        bat 'type "%JENKINS_HOME%\\credentials.xml" | find "aws-ec2-deploy-key"'
+                    } catch (Exception e) {
+                        error "Échec: ${e.message}"
                     }
                 }
             }
