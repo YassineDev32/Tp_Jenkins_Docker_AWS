@@ -10,10 +10,10 @@ pipeline {
                             bat 'ssh -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo \'Connexion SSH réussie !\'"'
                             
                             // Vérification Docker
-                            bat 'ssh ubuntu@VOTRE_IP_EC2 "docker --version"'
+                            bat 'ssh ubuntu@51.21.180.149 "docker --version"'
                             
                             // Vérification de l\'utilisateur
-                            bat 'ssh ubuntu@VOTRE_IP_EC2 "whoami && hostname"'
+                            bat 'ssh ubuntu@51.21.180.149 "whoami && hostname"'
                             
                             echo "✅ Tous les tests SSH ont réussi"
                         } catch (Exception e) {
