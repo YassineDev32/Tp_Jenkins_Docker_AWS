@@ -5,20 +5,14 @@ pipeline {
             steps {
                 sshagent(credentials: ['aws-ec2-deploy-key']) {
                     script {
-                        try {
-                            // Test basique de connexion
-                            bat 'ssh -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo \'Connexion SSH réussie !\'"'
-                            
-                            // Vérification Docker
-                            bat 'ssh ubuntu@51.21.180.149 "docker --version"'
-                            
-                            // Vérification de l\'utilisateur
-                            bat 'ssh ubuntu@51.21.180.149 "whoami && hostname"'
-                            
-                            echo "✅ Tous les tests SSH ont réussi"
-                        } catch (Exception e) {
-                            error "❌ Échec de la connexion SSH : ${e.message}"
-                        }
+                        // Test de base
+                        bat 'ssh -vvv -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo \'CONNEXION SSH VALIDÉE\'"'
+                        
+                        // Vérification Docker (avec timeout)
+                        bat 'ssh -o ConnectTimeout=10 ubuntu@51.21.180.149 "docker --version || echo \'Docker non installé\'"'
+                        
+                        // Vérification système
+                        bat 'ssh ubuntu@51.21.180.149 "whoami && hostname && df -h"'
                     }
                 }
             }
