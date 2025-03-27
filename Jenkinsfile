@@ -2,7 +2,6 @@ pipeline {
     agent any
     
     environment {
-        DOCKER_HUB = credentials('docker-hub-creds')
         AWS_SSH_KEY = credentials('aws-key.pem')
         DOCKER_IMAGE = "yassine112/mon-app-web"
         VERSION = "${env.BUILD_NUMBER ?: 'latest'}"
