@@ -1,11 +1,17 @@
 pipeline {
     agent any
     stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    credentialsId: 'aws-ec2-deploy-key',
+                    url: 'git@github.com:YassineDev32/Tp_Jenkins_Docker_AWS.git'
+            }
+        }
+        
         stage('Test SSH Connection') {
             steps {
-                script {
-                    sh 'ssh -i "C:/Users/Yassine_Saiiiiid/.ssh/aws-key.pem" -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo SSH Success!"'
-                }
+                sh 'ssh -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo Connection Successful"'
             }
         }
     }
