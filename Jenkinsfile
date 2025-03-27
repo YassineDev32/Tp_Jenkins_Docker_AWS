@@ -73,13 +73,24 @@ pipeline {
             steps {
                 powershell '''
                     try {
-                        $securePass = ConvertTo-SecureString "${env:DOCKER_HUB_PSW}" -AsPlainText -Force
-                        $cred = New-Object System.Management.Automation.PSCredential("${env:DOCKER_HUB_USR}", $securePass)
-                        docker login -u "${env:DOCKER_HUB_USR}" --password-stdin <<< "${env:DOCKER_HUB_PSW}"
+                        # Méthode la plus sécurisée avec suppression garantie du fichier
+                        $tempPwdFile = [System.IO.Path]::GetTempFileName()
+                        $env:DOCKER_HUB_PSW | Out-File -FilePath $tempPwdFile -Encoding ascii
+                        
+                        Get-Content $tempPwdFile | docker login -u "${env:DOCKER_HUB_USR}" --password-stdin
+                        if ($LASTEXITCODE -ne 0) { throw "Docker login failed" }
+                        
                         docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                        if ($LASTEXITCODE -ne 0) { throw "Docker push failed" }
+                        
+                        Write-Host "Image poussée avec succès vers Docker Hub"
                     } catch {
-                        Write-Host "Failed to push image: $_"
+                        Write-Host "ERREUR: $_"
                         exit 1
+                    } finally {
+                        if (Test-Path $tempPwdFile) {
+                            Remove-Item $tempPwdFile -Force
+                        }
                     }
                 '''
             }
