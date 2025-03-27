@@ -47,7 +47,7 @@ pipeline {
                     powershell '''
                         try {
                             # Lancer le conteneur
-                            docker run -d -p 8080:80 --name test-container "${env:DOCKER_IMAGE}:${env:VERSION}"
+                            docker run -d -p 8081:80 --name test-container "${env:DOCKER_IMAGE}:${env:VERSION}"
                             Start-Sleep -s 10
                             
                             # Tester l'application
