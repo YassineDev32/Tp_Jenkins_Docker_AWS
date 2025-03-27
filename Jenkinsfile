@@ -4,9 +4,7 @@ pipeline {
         stage('Test SSH Connection') {
             steps {
                 script {
-                    sshagent(['aws-ec2-deploy-key']) {
-                        sh 'ssh -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo SSH Success!"'
-                    }
+                    sh 'ssh -i "C:/Users/Yassine_Saiiiiid/.ssh/aws-key.pem" -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo SSH Success!"'
                 }
             }
         }
