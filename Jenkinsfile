@@ -69,43 +69,30 @@ pipeline {
         }
 
         stage('Push to Docker Hub') {
+            environment {
+                // Utilisez le nouvel ID de credential
+                DOCKER_TOKEN = credentials('docker-hub-token')
+            }
             steps {
-                script {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'docker-hub-creds',
-                        passwordVariable: 'DOCKER_TOKEN',
-                        usernameVariable: 'DOCKER_USER'
-                    )]) {
-                        powershell '''
-                            try {
-                                # Vérification des variables
-                                if (-not $env:DOCKER_USER -or -not $env:DOCKER_TOKEN) {
-                                    throw "Credentials Docker Hub non chargés"
-                                }
-        
-                                # Connexion avec vérification
-                                echo "Tentative de connexion à Docker Hub..."
-                                echo $env:DOCKER_TOKEN | docker login -u $env:DOCKER_USER --password-stdin
-                                if ($LASTEXITCODE -ne 0) {
-                                    throw "Échec authentification Docker Hub"
-                                }
-        
-                                # Tag et push
-                                docker push "$($env:DOCKER_IMAGE):$($env:VERSION)"
-                                if ($LASTEXITCODE -ne 0) {
-                                    throw "Échec du push Docker"
-                                }
-        
-                                Write-Host "Push réussi vers Docker Hub"
-                            } catch {
-                                Write-Host "ERREUR: $_" -ForegroundColor Red
-                                exit 1
-                            } finally {
-                                docker logout
-                            }
-                        '''
+                powershell '''
+                    # Connexion avec vérification
+                    $dockerUser = "yassine112"  # Remplacez par votre username Docker Hub
+                    echo "Connexion en tant que $dockerUser"
+                    
+                    if (-not $env:DOCKER_TOKEN) {
+                        throw "Token Docker non chargé"
                     }
-                }
+        
+                    echo $env:DOCKER_TOKEN | docker login -u $dockerUser --password-stdin
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "ÉCHEC : Vérifiez votre username et token Docker Hub"
+                    }
+        
+                    # Push avec vérification du tag
+                    $imageTag = "${env:DOCKER_IMAGE}:${env:VERSION}"
+                    docker inspect $imageTag || throw "Image $imageTag introuvable localement"
+                    docker push $imageTag
+                '''
             }
         }
 
