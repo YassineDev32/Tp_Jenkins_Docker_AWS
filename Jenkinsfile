@@ -71,51 +71,42 @@ pipeline {
 
         stage('Push to Docker Hub') {
             steps {
-                powershell '''
-                    try {
-                        # Initialisation des variables
-                        $tempFile = $null
-                        $loginSuccess = $false
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'docker-hub-creds',
+                        passwordVariable: 'DOCKER_TOKEN',
+                        usernameVariable: 'DOCKER_USER'
+                    )]) {
+                        powershell '''
+                            try {
+                                # Vérification des variables
+                                if (-not $env:DOCKER_USER -or -not $env:DOCKER_TOKEN) {
+                                    throw "Credentials Docker Hub non chargés"
+                                }
         
-                        # Vérification des credentials
-                        if ([string]::IsNullOrEmpty($env:DOCKER_HUB_USR) -or [string]::IsNullOrEmpty($env:DOCKER_HUB_PSW)) {
-                            throw "Les identifiants Docker Hub ne sont pas configurés"
-                        }
+                                # Connexion avec vérification
+                                echo "Tentative de connexion à Docker Hub..."
+                                echo $env:DOCKER_TOKEN | docker login -u $env:DOCKER_USER --password-stdin
+                                if ($LASTEXITCODE -ne 0) {
+                                    throw "Échec authentification Docker Hub"
+                                }
         
-                        # Création du fichier temporaire
-                        $tempFile = [System.IO.Path]::GetTempFileName()
-                        $env:DOCKER_HUB_PSW | Out-File -FilePath $tempFile -Encoding ASCII
+                                # Tag et push
+                                docker push "$($env:DOCKER_IMAGE):$($env:VERSION)"
+                                if ($LASTEXITCODE -ne 0) {
+                                    throw "Échec du push Docker"
+                                }
         
-                        # Connexion à Docker Hub
-                        Get-Content $tempFile | docker login -u $env:DOCKER_HUB_USR --password-stdin
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Échec de la connexion à Docker Hub (code: $LASTEXITCODE)"
-                        }
-                        $loginSuccess = $true
-        
-                        # Push de l'image
-                        docker push "$($env:DOCKER_IMAGE):$($env:VERSION)"
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Échec du push Docker (code: $LASTEXITCODE)"
-                        }
-        
-                        Write-Host "Push vers Docker Hub réussi"
-                    } catch {
-                        Write-Host "ERREUR CRITIQUE: $_" -ForegroundColor Red
-                        exit 1
-                    } finally {
-                        # Nettoyage sécurisé avec vérification
-                        if ($null -ne $tempFile -and (Test-Path -LiteralPath $tempFile -ErrorAction SilentlyContinue)) {
-                            Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
-                            Write-Host "Fichier temporaire nettoyé"
-                        }
-                        
-                        # Déconnexion si nécessaire
-                        if ($loginSuccess) {
-                            docker logout
-                        }
+                                Write-Host "Push réussi vers Docker Hub"
+                            } catch {
+                                Write-Host "ERREUR: $_" -ForegroundColor Red
+                                exit 1
+                            } finally {
+                                docker logout
+                            }
+                        '''
                     }
-                '''
+                }
             }
         }
 
