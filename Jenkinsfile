@@ -1,30 +1,27 @@
 pipeline {
     agent any
-
     environment {
-        SSH_KEY = credentials('aws-key.pem')  // Replace with your actual credentials ID
+        AWS_EC2_IP = '51.21.180.149'
     }
-
     stages {
-        stage('Connect to AWS EC2') {
+        stage('Test SSH Connection') {
             steps {
-                script {
-                    // For Unix-based systems (Linux/macOS)
-                    if (isUnix()) {
-                        sh '''
-                            echo "$SSH_KEY" > aws-key.pem
-                            chmod 400 aws-key.pem
-                            ssh -i aws-key.pem -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo Connexion réussie depuis Jenkins !"
-                        '''
-                    } 
-                    // For Windows systems (PowerShell)
-                    else {
-                        powershell '''
-                            $sshKey = $Env:SSH_KEY
-                            $sshKey | Out-File -FilePath aws-key.pem -Encoding ASCII
-                            icacls "aws-key.pem" /inheritance:r /grant:r "$env:USERNAME:(R)"
-                            ssh -i aws-key.pem -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo Connexion réussie depuis Jenkins !"
-                        '''
+                withCredentials([file(credentialsId: 'aws-ssh-key-file', variable: 'SSH_KEY')]) {
+                    script {
+                        // 1. Corriger les permissions (Windows)
+                        bat """
+                            icacls "${SSH_KEY}" /reset
+                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
+                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
+                            icacls "${SSH_KEY}" /inheritance:r
+                        """
+                        
+                        // 2. Tester la connexion
+                        bat """
+                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@%AWS_EC2_IP% "echo 'Connexion réussie !'"
+                            ssh -i "${SSH_KEY}" ubuntu@%AWS_EC2_IP% "docker --version"
+                            ssh -i "${SSH_KEY}" ubuntu@%AWS_EC2_IP% "whoami && hostname"
+                        """
                     }
                 }
             }
