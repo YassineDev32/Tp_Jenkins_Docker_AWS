@@ -70,28 +70,43 @@ pipeline {
 
         stage('Push to Docker Hub') {
             environment {
-                // Utilisez le nouvel ID de credential
                 DOCKER_TOKEN = credentials('docker-hub-token')
             }
             steps {
                 powershell '''
-                    # Connexion avec vérification
+                    # Configuration
                     $dockerUser = "yassine112"  # Remplacez par votre username Docker Hub
-                    echo "Connexion en tant que $dockerUser"
-                    
-                    if (-not $env:DOCKER_TOKEN) {
-                        throw "Token Docker non chargé"
-                    }
-        
-                    echo $env:DOCKER_TOKEN | docker login -u $dockerUser --password-stdin
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "ÉCHEC : Vérifiez votre username et token Docker Hub"
-                    }
-        
-                    # Push avec vérification du tag
                     $imageTag = "${env:DOCKER_IMAGE}:${env:VERSION}"
-                    docker inspect $imageTag || throw "Image $imageTag introuvable localement"
-                    docker push $imageTag
+                    
+                    # Connexion à Docker Hub
+                    try {
+                        echo "Tentative de connexion à Docker Hub..."
+                        echo ${env:DOCKER_TOKEN} | docker login -u $dockerUser --password-stdin
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Échec de l'authentification Docker Hub"
+                        }
+                        
+                        # Vérification de l'image
+                        docker inspect $imageTag
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Image $imageTag introuvable localement"
+                        }
+                        
+                        # Push de l'image
+                        docker push $imageTag
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Échec du push Docker"
+                        }
+                        
+                        Write-Host "Push réussi vers Docker Hub"
+                    }
+                    catch {
+                        Write-Host "ERREUR: $_" -ForegroundColor Red
+                        exit 1
+                    }
+                    finally {
+                        docker logout
+                    }
                 '''
             }
         }
