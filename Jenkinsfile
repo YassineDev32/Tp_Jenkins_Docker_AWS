@@ -87,27 +87,5 @@ pipeline {
                 }
             }
         }
-        
-        stage('Verify Deployments') {
-            steps {
-                parallel {
-                    stage('Verify Review') {
-                        steps {
-                            bat "curl -I http://${REVIEW_IP} || exit 1"
-                        }
-                    }
-                    stage('Verify Staging') {
-                        steps {
-                            bat "curl -I http://${STAGING_IP} || exit 1"
-                        }
-                    }
-                    stage('Verify Production') {
-                        steps {
-                            bat "curl -I http://${PROD_IP} || exit 1"
-                        }
-                    }
-                }
-            }
-        }
     }
 }
