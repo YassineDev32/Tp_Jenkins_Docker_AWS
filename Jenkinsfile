@@ -73,30 +73,46 @@ pipeline {
             steps {
                 powershell '''
                     try {
-                        # Méthode recommandée pour PowerShell
-                        $secpasswd = ConvertTo-SecureString "${env:DOCKER_HUB_PSW}" -AsPlainText -Force
-                        $credential = New-Object System.Management.Automation.PSCredential("${env:DOCKER_HUB_USR}", $secpasswd)
-                        
-                        # Sauvegarde temporaire du mot de passe
+                        # Initialisation des variables
+                        $tempFile = $null
+                        $loginSuccess = $false
+        
+                        # Vérification des credentials
+                        if ([string]::IsNullOrEmpty($env:DOCKER_HUB_USR) -or [string]::IsNullOrEmpty($env:DOCKER_HUB_PSW)) {
+                            throw "Les identifiants Docker Hub ne sont pas configurés"
+                        }
+        
+                        # Création du fichier temporaire
                         $tempFile = [System.IO.Path]::GetTempFileName()
-                        $credential.GetNetworkCredential().Password | Out-File $tempFile -Encoding ASCII
-                        
+                        $env:DOCKER_HUB_PSW | Out-File -FilePath $tempFile -Encoding ASCII
+        
                         # Connexion à Docker Hub
-                        Get-Content $tempFile | docker login -u "${env:DOCKER_HUB_USR}" --password-stdin
-                        if ($LASTEXITCODE -ne 0) { throw "Échec de la connexion à Docker Hub" }
-                        
+                        Get-Content $tempFile | docker login -u $env:DOCKER_HUB_USR --password-stdin
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Échec de la connexion à Docker Hub (code: $LASTEXITCODE)"
+                        }
+                        $loginSuccess = $true
+        
                         # Push de l'image
-                        docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
-                        if ($LASTEXITCODE -ne 0) { throw "Échec du push Docker" }
-                        
+                        docker push "$($env:DOCKER_IMAGE):$($env:VERSION)"
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Échec du push Docker (code: $LASTEXITCODE)"
+                        }
+        
                         Write-Host "Push vers Docker Hub réussi"
                     } catch {
-                        Write-Host "ERREUR: $_"
+                        Write-Host "ERREUR CRITIQUE: $_" -ForegroundColor Red
                         exit 1
                     } finally {
-                        # Nettoyage sécurisé
-                        if (Test-Path $tempFile) {
-                            Remove-Item $tempFile -Force
+                        # Nettoyage sécurisé avec vérification
+                        if ($null -ne $tempFile -and (Test-Path -LiteralPath $tempFile -ErrorAction SilentlyContinue)) {
+                            Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
+                            Write-Host "Fichier temporaire nettoyé"
+                        }
+                        
+                        # Déconnexion si nécessaire
+                        if ($loginSuccess) {
+                            docker logout
                         }
                     }
                 '''
