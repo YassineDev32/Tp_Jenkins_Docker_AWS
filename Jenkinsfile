@@ -73,23 +73,30 @@ pipeline {
             steps {
                 powershell '''
                     try {
-                        # Méthode la plus sécurisée avec suppression garantie du fichier
-                        $tempPwdFile = [System.IO.Path]::GetTempFileName()
-                        $env:DOCKER_HUB_PSW | Out-File -FilePath $tempPwdFile -Encoding ascii
+                        # Méthode recommandée pour PowerShell
+                        $secpasswd = ConvertTo-SecureString "${env:DOCKER_HUB_PSW}" -AsPlainText -Force
+                        $credential = New-Object System.Management.Automation.PSCredential("${env:DOCKER_HUB_USR}", $secpasswd)
                         
-                        Get-Content $tempPwdFile | docker login -u "${env:DOCKER_HUB_USR}" --password-stdin
-                        if ($LASTEXITCODE -ne 0) { throw "Docker login failed" }
+                        # Sauvegarde temporaire du mot de passe
+                        $tempFile = [System.IO.Path]::GetTempFileName()
+                        $credential.GetNetworkCredential().Password | Out-File $tempFile -Encoding ASCII
                         
+                        # Connexion à Docker Hub
+                        Get-Content $tempFile | docker login -u "${env:DOCKER_HUB_USR}" --password-stdin
+                        if ($LASTEXITCODE -ne 0) { throw "Échec de la connexion à Docker Hub" }
+                        
+                        # Push de l'image
                         docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
-                        if ($LASTEXITCODE -ne 0) { throw "Docker push failed" }
+                        if ($LASTEXITCODE -ne 0) { throw "Échec du push Docker" }
                         
-                        Write-Host "Image poussée avec succès vers Docker Hub"
+                        Write-Host "Push vers Docker Hub réussi"
                     } catch {
                         Write-Host "ERREUR: $_"
                         exit 1
                     } finally {
-                        if (Test-Path $tempPwdFile) {
-                            Remove-Item $tempPwdFile -Force
+                        # Nettoyage sécurisé
+                        if (Test-Path $tempFile) {
+                            Remove-Item $tempFile -Force
                         }
                     }
                 '''
