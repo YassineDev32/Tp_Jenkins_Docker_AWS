@@ -6,7 +6,7 @@ pipeline {
     stages {
         stage('Test SSH Connection') {
             steps {
-                withCredentials([file(credentialsId: 'aws-ssh-key-file', variable: 'SSH_KEY')]) {
+                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     script {
                         // 1. Corriger les permissions (Windows)
                         bat """
