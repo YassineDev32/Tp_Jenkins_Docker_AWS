@@ -68,45 +68,44 @@ pipeline {
             }
         }
 
-        stage('Push to Docker Hub') {
+       stage('Push to Docker Hub') {
             environment {
                 DOCKER_TOKEN = credentials('docker-hub-token')
             }
             steps {
                 powershell '''
-                    # Configuration
-                    $dockerUser = "yassine112"  # Remplacez par votre username Docker Hub
-                    $imageTag = "${env:DOCKER_IMAGE}:${env:VERSION}"
-                    
-                    # Connexion à Docker Hub
-                    try {
-                        echo "Tentative de connexion à Docker Hub..."
-                        echo ${env:DOCKER_TOKEN} | docker login -u $dockerUser --password-stdin
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Échec de l'authentification Docker Hub"
-                        }
-                        
-                        # Vérification de l'image
-                        docker inspect $imageTag
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Image $imageTag introuvable localement"
-                        }
-                        
-                        # Push de l'image
-                        docker push $imageTag
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Échec du push Docker"
-                        }
-                        
-                        Write-Host "Push réussi vers Docker Hub"
+                    # Test de connexion préalable
+                    $canConnect = Test-NetConnection -ComputerName auth.docker.io -Port 443 -WarningAction SilentlyContinue
+                    if (-not $canConnect.TcpTestSucceeded) {
+                        throw "Impossible de se connecter à auth.docker.io:443"
                     }
-                    catch {
-                        Write-Host "ERREUR: $_" -ForegroundColor Red
-                        exit 1
+        
+                    # Authentification avec timeout
+                    $dockerUser = "yassine112"
+                    $maxRetries = 3
+                    $retryCount = 0
+                    $authenticated = $false
+        
+                    while ($retryCount -lt $maxRetries -and -not $authenticated) {
+                        try {
+                            echo ${env:DOCKER_TOKEN} | docker login -u $dockerUser --password-stdin
+                            if ($LASTEXITCODE -eq 0) {
+                                $authenticated = $true
+                                break
+                            }
+                        } catch {
+                            Write-Host "Tentative $($retryCount + 1)/$maxRetries échouée"
+                            Start-Sleep -Seconds 5
+                        }
+                        $retryCount++
                     }
-                    finally {
-                        docker logout
+        
+                    if (-not $authenticated) {
+                        throw "Échec d'authentification après $maxRetries tentatives"
                     }
+        
+                    # Push de l'image
+                    docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
                 '''
             }
         }
