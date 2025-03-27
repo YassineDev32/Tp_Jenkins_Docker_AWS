@@ -1,17 +1,14 @@
 pipeline {
     agent any
+
     stages {
-        stage('Checkout') {
+        stage('Connect to AWS EC2') {
             steps {
-                git branch: 'main',
-                    credentialsId: 'aws-ec2-deploy-key',
-                    url: 'git@github.com:YassineDev32/Tp_Jenkins_Docker_AWS.git'
-            }
-        }
-        
-        stage('Test SSH Connection') {
-            steps {
-                sh 'ssh -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo Connection Successful"'
+                script {
+                    sshagent(['aws-ec2-deploy-key']) {
+                        sh 'ssh -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo Connexion réussie depuis Jenkins !"'
+                    }
+                }
             }
         }
     }
