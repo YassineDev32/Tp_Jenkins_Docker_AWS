@@ -5,7 +5,7 @@ pipeline {
         DOCKER_HUB = credentials('docker-hub-creds')
         AWS_SSH_KEY = credentials('aws-key.pem')
         DOCKER_IMAGE = "yassine112/mon-app-web"
-        VERSION = "${env.BUILD_NUMBER}"
+        VERSION = env.BUILD_NUMBER ?: "latest"
         REVIEW_IP = "51.21.180.149"  
         STAGING_IP = "51.20.56.9"  
         PROD_IP = "13.60.156.76"  
