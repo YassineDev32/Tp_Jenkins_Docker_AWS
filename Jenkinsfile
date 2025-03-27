@@ -22,7 +22,7 @@ pipeline {
                         powershell '''
                             $sshKey = $Env:SSH_KEY
                             $sshKey | Out-File -FilePath aws-key.pem -Encoding ASCII
-                            icacls "aws-key.pem" /inheritance:r /grant:r "Everyone:(R)"
+                            icacls "aws-key.pem" /inheritance:r /grant:r "$env:USERNAME:(R)"
                             ssh -i aws-key.pem -o StrictHostKeyChecking=no ubuntu@51.21.180.149 "echo Connexion réussie depuis Jenkins !"
                         '''
                     }
