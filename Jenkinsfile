@@ -51,7 +51,7 @@ pipeline {
                             Start-Sleep -s 10
                             
                             # Tester l'application
-                            $response = Invoke-WebRequest -Uri "http://localhost:8080" -UseBasicParsing -ErrorAction Stop
+                            $response = Invoke-WebRequest -Uri "http://localhost:8081" -UseBasicParsing -ErrorAction Stop
                             if ($response.StatusCode -ne 200) { 
                                 throw "HTTP Status ${response.StatusCode}" 
                             }
