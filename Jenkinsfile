@@ -67,11 +67,11 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    // Make sure you're using EXACTLY this format in Jenkinsfile
-                    withCredentials([string(credentialsId: 'docker-hub-token', variable: 'DOCKER_TOKEN')]) {
+                    // Use the credential ID 'docker-hub-pat'
+                    withCredentials([string(credentialsId: 'docker-hub-pat', variable: 'DOCKER_TOKEN')]) {
                         powershell '''
-                            echo "Testing token length: $($env:DOCKER_TOKEN.Length)"
-                            echo $env:DOCKER_TOKEN | docker login -u "yassine112" --password-stdin
+                            echo "${env:DOCKER_TOKEN}" | docker login -u "yassine112" --password-stdin
+                            docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
                         '''
                     }
                 }
