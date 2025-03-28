@@ -9,34 +9,12 @@ pipeline {
         STAGING_IP = "51.20.56.9"  
         PROD_IP = "13.60.156.76"  
     }
-
-    stages {
-        stage('Verify Environment') {
-            steps {
-                powershell '''
-                    Write-Host "Docker version:"
-                    docker --version
-                    Write-Host "Git version:"
-                    git --version
-                '''
-            }
-        }
-
+    
         stage('Checkout Code') {
             steps {
                 git branch: 'main', 
                      credentialsId: 'github-credentials', 
                      url: 'https://github.com/YassineDev32/Tp_Jenkins_Docker_AWS.git'
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                powershell '''
-                    Write-Host "Building image ${env:DOCKER_IMAGE}:${env:VERSION}"
-                    docker build -t "${env:DOCKER_IMAGE}:${env:VERSION}" .
-                    if ($LASTEXITCODE -ne 0) { exit 1 }
-                '''
             }
         }
 
