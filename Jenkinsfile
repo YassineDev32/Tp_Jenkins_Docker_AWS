@@ -65,27 +65,27 @@ pipeline {
         }
 
         stage('Push to Docker Hub') {
-            environment {
-                DOCKER_TOKEN = credentials('docker-hub-token')
-            }
             steps {
                 script {
-                    powershell '''
-                        # Vérifier la connexion à Docker Hub
-                        $canConnect = Test-NetConnection -ComputerName auth.docker.io -Port 443
-                        if (-not $canConnect.TcpTestSucceeded) {
-                            throw "Impossible de se connecter à Docker Hub"
-                        }
-
-                        # Authentification Docker
-                        echo ${env:DOCKER_TOKEN} | docker login -u "yassine112" --password-stdin
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Échec d'authentification Docker"
-                        }
-
-                        # Pousser l'image Docker
-                        docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
-                    '''
+                    // Use withCredentials to securely pass the Docker Hub token
+                    withCredentials([string(credentialsId: 'docker-hub-token', variable: 'DOCKER_TOKEN')]) {
+                        powershell '''
+                            # Check Docker Hub connectivity
+                            $canConnect = Test-NetConnection -ComputerName auth.docker.io -Port 443
+                            if (-not $canConnect.TcpTestSucceeded) {
+                                throw "Cannot connect to Docker Hub"
+                            }
+        
+                            # Docker login using the token
+                            echo $env:DOCKER_TOKEN | docker login -u "yassine112" --password-stdin
+                            if ($LASTEXITCODE -ne 0) {
+                                throw "Docker authentication failed"
+                            }
+        
+                            # Push the Docker image
+                            docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                        '''
+                    }
                 }
             }
         }
