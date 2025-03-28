@@ -19,11 +19,27 @@ pipeline {
             }
         }
 
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    powershell '''
+                        docker build -t "${env:DOCKER_IMAGE}:${env:VERSION}" .
+                    '''
+                }
+            }
+        }
+
         stage('Test Image') {
             steps {
                 script {
                     powershell '''
                         try {
+                            # Vérifier si l'image existe localement
+                            $imageExists = docker images -q "${env:DOCKER_IMAGE}:${env:VERSION}"
+                            if (-not $imageExists) {
+                                throw "L'image ${env:DOCKER_IMAGE}:${env:VERSION} n'existe pas localement."
+                            }
+
                             # Lancer le conteneur
                             docker run -d -p 8081:80 --name test-container "${env:DOCKER_IMAGE}:${env:VERSION}"
                             Start-Sleep -s 10
@@ -36,6 +52,7 @@ pipeline {
                             Write-Host "Test passed successfully"
                         } catch {
                             Write-Host "Test failed: $_"
+                            docker logs test-container
                             exit 1
                         } finally {
                             # Nettoyage du conteneur
