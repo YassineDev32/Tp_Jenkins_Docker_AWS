@@ -67,52 +67,11 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
+                    // Make sure you're using EXACTLY this format in Jenkinsfile
                     withCredentials([string(credentialsId: 'docker-hub-token', variable: 'DOCKER_TOKEN')]) {
                         powershell '''
-                            try {
-                                Write-Host "Attempting Docker Hub login..."
-                                
-                                # Verify network connectivity to Docker Hub
-                                $connection = Test-NetConnection -ComputerName auth.docker.io -Port 443 -ErrorAction SilentlyContinue
-                                if (-not $connection.TcpTestSucceeded) {
-                                    throw "ERROR: Cannot connect to Docker Hub (auth.docker.io:443)"
-                                }
-        
-                                # Perform Docker login
-                                $env:DOCKER_TOKEN | docker login -u "yassine112" --password-stdin
-                                if ($LASTEXITCODE -ne 0) {
-                                    throw "ERROR: Docker authentication failed - check your token"
-                                }
-        
-                                # Push the image with retry logic
-                                $maxRetries = 3
-                                $retryCount = 0
-                                $pushSuccess = $false
-                                
-                                do {
-                                    Write-Host "Pushing image (attempt $($retryCount + 1)/$maxRetries)..."
-                                    docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
-                                    
-                                    if ($LASTEXITCODE -eq 0) {
-                                        $pushSuccess = $true
-                                        Write-Host "Successfully pushed ${env:DOCKER_IMAGE}:${env:VERSION}"
-                                        break
-                                    }
-                                    
-                                    $retryCount++
-                                    if ($retryCount -lt $maxRetries) {
-                                        Start-Sleep -Seconds 5
-                                    }
-                                } while ($retryCount -lt $maxRetries)
-        
-                                if (-not $pushSuccess) {
-                                    throw "ERROR: Failed to push image after $maxRetries attempts"
-                                }
-                            }
-                            catch {
-                                Write-Host "FATAL ERROR: $_"
-                                exit 1
-                            }
+                            echo "Testing token length: $($env:DOCKER_TOKEN.Length)"
+                            echo $env:DOCKER_TOKEN | docker login -u "yassine112" --password-stdin
                         '''
                     }
                 }
