@@ -67,23 +67,52 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
-                    // Use withCredentials to securely pass the Docker Hub token
                     withCredentials([string(credentialsId: 'docker-hub-token', variable: 'DOCKER_TOKEN')]) {
                         powershell '''
-                            # Check Docker Hub connectivity
-                            $canConnect = Test-NetConnection -ComputerName auth.docker.io -Port 443
-                            if (-not $canConnect.TcpTestSucceeded) {
-                                throw "Cannot connect to Docker Hub"
-                            }
+                            try {
+                                Write-Host "Attempting Docker Hub login..."
+                                
+                                # Verify network connectivity to Docker Hub
+                                $connection = Test-NetConnection -ComputerName auth.docker.io -Port 443 -ErrorAction SilentlyContinue
+                                if (-not $connection.TcpTestSucceeded) {
+                                    throw "ERROR: Cannot connect to Docker Hub (auth.docker.io:443)"
+                                }
         
-                            # Docker login using the token
-                            echo $env:DOCKER_TOKEN | docker login -u "yassine112" --password-stdin
-                            if ($LASTEXITCODE -ne 0) {
-                                throw "Docker authentication failed"
-                            }
+                                # Perform Docker login
+                                $env:DOCKER_TOKEN | docker login -u "yassine112" --password-stdin
+                                if ($LASTEXITCODE -ne 0) {
+                                    throw "ERROR: Docker authentication failed - check your token"
+                                }
         
-                            # Push the Docker image
-                            docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                                # Push the image with retry logic
+                                $maxRetries = 3
+                                $retryCount = 0
+                                $pushSuccess = $false
+                                
+                                do {
+                                    Write-Host "Pushing image (attempt $($retryCount + 1)/$maxRetries)..."
+                                    docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                                    
+                                    if ($LASTEXITCODE -eq 0) {
+                                        $pushSuccess = $true
+                                        Write-Host "Successfully pushed ${env:DOCKER_IMAGE}:${env:VERSION}"
+                                        break
+                                    }
+                                    
+                                    $retryCount++
+                                    if ($retryCount -lt $maxRetries) {
+                                        Start-Sleep -Seconds 5
+                                    }
+                                } while ($retryCount -lt $maxRetries)
+        
+                                if (-not $pushSuccess) {
+                                    throw "ERROR: Failed to push image after $maxRetries attempts"
+                                }
+                            }
+                            catch {
+                                Write-Host "FATAL ERROR: $_"
+                                exit 1
+                            }
                         '''
                     }
                 }
