@@ -70,52 +70,54 @@ pipeline {
                     withCredentials([
                         usernamePassword(
                             credentialsId: 'docker-hub-creds',
-                            usernameVariable: 'DOCKER_USERNAME',
-                            passwordVariable: 'DOCKER_PASSWORD'
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
                         )
                     ]) {
                         powershell '''
-                            # Clear existing credentials
+                            # 1. Completely reset Docker configuration
+                            Write-Host "=== Resetting Docker configuration ==="
                             docker logout
                             Remove-Item -Path "$env:USERPROFILE/.docker/config.json" -Force -ErrorAction SilentlyContinue
-        
-                            # Verify credentials
-                            if (-not $env:DOCKER_USERNAME -or -not $env:DOCKER_PASSWORD) {
-                                throw "Docker credentials not properly set!"
+                            
+                            # 2. Verify credentials are properly set
+                            if ([string]::IsNullOrEmpty($env:DOCKER_USER) -or [string]::IsNullOrEmpty($env:DOCKER_PASS)) {
+                                throw "ERROR: Docker credentials not properly configured"
                             }
-        
-                            # Login using the exact format that works manually
-                            $command = @"
-                            echo "$env:DOCKER_PASSWORD" | docker login -u "$env:DOCKER_USERNAME" --password-stdin
-        "@
-                            Invoke-Expression $command
-        
+                            
+                            # 3. Login using simple echo method (no here-string)
+                            $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
+                            
                             if ($LASTEXITCODE -ne 0) {
-                                throw "Docker login failed with provided credentials"
+                                throw "ERROR: Docker login failed (check credentials and network)"
                             }
-        
-                            # Push the image with retries
+                            
+                            # 4. Push with retries
                             $maxRetries = 3
                             $retryCount = 0
                             do {
+                                Write-Host "Push attempt $($retryCount + 1)/$maxRetries"
                                 docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                                
                                 if ($LASTEXITCODE -eq 0) {
-                                    Write-Host "Successfully pushed ${env:DOCKER_IMAGE}:${env:VERSION}"
+                                    Write-Host "SUCCESS: Image pushed to Docker Hub"
                                     break
                                 }
+                                
                                 $retryCount++
-                                Start-Sleep -Seconds 5
+                                if ($retryCount -lt $maxRetries) {
+                                    Start-Sleep -Seconds 10
+                                }
                             } while ($retryCount -lt $maxRetries)
         
                             if ($retryCount -eq $maxRetries) {
-                                throw "Failed to push after $maxRetries attempts"
+                                throw "ERROR: Failed to push after $maxRetries attempts"
                             }
                         '''
                     }
                 }
             }
         }
-
         stage('Deploy to Review') {
             steps {
                 script {
