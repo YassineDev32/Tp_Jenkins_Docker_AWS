@@ -2,7 +2,6 @@ pipeline {
     agent any
     
     environment {
-        AWS_SSH_KEY = credentials('aws-key.pem')
         DOCKER_IMAGE = "yassine112/mon-app-web"
         VERSION = "${env.BUILD_NUMBER ?: 'latest'}"
         REVIEW_IP = "51.21.180.149"
