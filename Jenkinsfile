@@ -132,18 +132,18 @@ pipeline {
                         """
                         
                         // Set permissions using PowerShell (more reliable than icacls)
-                        powershell """
-                            \$keyPath = "\${env:TEMP}\\review-key.pem"
-                            \$acl = Get-Acl \$keyPath
-                            \$acl.SetAccessRuleProtection(`$true, `$false)
-                            \$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-                                "\${env:USERNAME}",
+                        powershell '''
+                            $keyPath = "$env:TEMP\\review-key.pem"
+                            $acl = Get-Acl $keyPath
+                            $acl.SetAccessRuleProtection($true, $false)
+                            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                                "$env:USERNAME",
                                 "Read",
                                 "Allow"
                             )
-                            \$acl.SetAccessRule(\$rule)
-                            Set-Acl \$keyPath \$acl
-                        """
+                            $acl.SetAccessRule($rule)
+                            Set-Acl $keyPath $acl
+                        '''
                         
                         // Execute deployment commands
                         bat """
