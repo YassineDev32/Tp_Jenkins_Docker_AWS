@@ -91,7 +91,8 @@ pipeline {
                 script {
                     withCredentials([file(credentialsId: 'aws-key', variable: 'SSH_KEY')]) {
                         powershell '''
-                            $tempKey = "$env:TEMP\aws-key-${env:BUILD_NUMBER}.pem"
+                            # Fix: Use forward slashes or double backslashes for Windows paths
+                            $tempKey = "$env:TEMP/aws-key-${env:BUILD_NUMBER}.pem"
                             Set-Content -Path $tempKey -Value $env:SSH_KEY
                             icacls $tempKey /inheritance:r
                             icacls $tempKey /grant:r "$env:USERNAME:R"
