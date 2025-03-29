@@ -145,7 +145,7 @@ pipeline {
         stage('Deploy to Review') {
             steps {
                 script {
-                    withCredentials([file(credentialsId: 'aws-key', variable: 'SSH_KEY')]) {
+                    withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                         powershell '''
                             # Use forward slashes for Windows compatibility
                             $tempKey = "$env:TEMP/aws-key-${env:BUILD_NUMBER}.pem"
