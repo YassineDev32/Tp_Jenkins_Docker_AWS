@@ -75,25 +75,14 @@ pipeline {
                         )
                     ]) {
                         powershell '''
-                            # Clean existing credentials
+                            # Clean existing credentials - using forward slashes or escaped backslashes
                             docker logout
-                            Remove-Item -Path "$env:USERPROFILE\.docker\config.json" -Force -ErrorAction SilentlyContinue
+                            Remove-Item -Path "$env:USERPROFILE/.docker/config.json" -Force -ErrorAction SilentlyContinue
         
                             # Method 1: Using echo (most reliable)
                             echo $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
         
-                            # Alternative Method 2: Using temporary file (if echo fails)
-                            if ($LASTEXITCODE -ne 0) {
-                                $tempFile = New-TemporaryFile
-                                try {
-                                    $env:DOCKER_PASS | Out-File -FilePath $tempFile -Encoding ascii
-                                    Get-Content $tempFile | docker login -u $env:DOCKER_USER --password-stdin
-                                }
-                                finally {
-                                    Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
-                                }
-                            }
-        
+                            # Verify login success
                             if ($LASTEXITCODE -ne 0) {
                                 throw "Docker login failed"
                             }
