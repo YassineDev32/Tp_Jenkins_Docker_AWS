@@ -65,13 +65,66 @@ pipeline {
         }
 
         stage('Push to Docker Hub') {
+            environment {
+                // This helps Docker use the correct config location
+                DOCKER_CONFIG = "${WORKSPACE}/.docker"
+            }
             steps {
                 script {
-                    // Use the credential ID 'docker-hub-pat'
-                    withCredentials([string(credentialsId: 'docker-hub-pat', variable: 'DOCKER_TOKEN')]) {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'docker-hub-creds',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        )
+                    ]) {
                         powershell '''
-                            echo "${env:DOCKER_TOKEN}" | docker login -u "yassine112" --password-stdin
-                            docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                            # Clean any existing credentials
+                            Write-Host "=== Resetting Docker configuration ==="
+                            docker logout
+                            Remove-Item -Path "$env:DOCKER_CONFIG" -Recurse -Force -ErrorAction SilentlyContinue
+                            New-Item -Path "$env:DOCKER_CONFIG" -ItemType Directory -Force | Out-Null
+        
+                            # Test connectivity to Docker Hub
+                            Write-Host "=== Testing Docker Hub connectivity ==="
+                            if (-not (Test-NetConnection registry-1.docker.io -Port 443 -InformationLevel Quiet)) {
+                                throw "Cannot connect to Docker Hub registry"
+                            }
+        
+                            # Login using username/password
+                            Write-Host "=== Authenticating to Docker Hub ==="
+                            $securePass = ConvertTo-SecureString $env:DOCKER_PASS -AsPlainText -Force
+                            $credential = New-Object System.Management.Automation.PSCredential($env:DOCKER_USER, $securePass)
+                            
+                            $loginOutput = docker login -u $credential.UserName --password-stdin 2>&1 <<< "$($credential.GetNetworkCredential().Password)"
+                            
+                            if ($LASTEXITCODE -ne 0) {
+                                Write-Host "LOGIN ERROR OUTPUT: $loginOutput"
+                                throw "Docker authentication failed"
+                            }
+                            Write-Host "Successfully logged in to Docker Hub"
+        
+                            # Push with retries
+                            $maxRetries = 3
+                            $retryCount = 0
+                            do {
+                                Write-Host "Pushing image (attempt $($retryCount + 1))..."
+                                docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                                
+                                if ($LASTEXITCODE -eq 0) {
+                                    Write-Host "Image pushed successfully!"
+                                    break
+                                }
+                                
+                                $retryCount++
+                                if ($retryCount -lt $maxRetries) {
+                                    Start-Sleep -Seconds 10
+                                }
+                            } while ($retryCount -lt $maxRetries)
+        
+                            if ($retryCount -eq $maxRetries) {
+                                throw "Failed to push image after $maxRetries attempts"
+                            }
                         '''
                     }
                 }
