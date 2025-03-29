@@ -64,49 +64,25 @@ pipeline {
             }
         }
 
-        stage('Push to Docker Hub') {
-            steps {
-                script {
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: 'docker-hub-creds',
-                            usernameVariable: 'DOCKER_USER',
-                            passwordVariable: 'DOCKER_PASS'
-                        )
-                    ]) {
-                        powershell '''
-                            # Clean existing credentials - using forward slashes or escaped backslashes
-                            docker logout
-                            Remove-Item -Path "$env:USERPROFILE/.docker/config.json" -Force -ErrorAction SilentlyContinue
-        
-                            # Method 1: Using echo (most reliable)
-                            echo $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
-        
-                            # Verify login success
-                            if ($LASTEXITCODE -ne 0) {
-                                throw "Docker login failed"
-                            }
-        
-                            # Push image with retries
-                            $maxRetries = 3
-                            $retryCount = 0
-                            do {
-                                docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
-                                if ($LASTEXITCODE -eq 0) {
-                                    Write-Host "Image pushed successfully!"
-                                    break
-                                }
-                                $retryCount++
-                                if ($retryCount -lt $maxRetries) {
-                                    Start-Sleep -Seconds 5
-                                    Write-Host "Retrying push ($retryCount/$maxRetries)..."
-                                }
-                            } while ($retryCount -lt $maxRetries)
-        
-                            if ($retryCount -eq $maxRetries) {
-                                throw "Failed to push image after $maxRetries attempts"
-                            }
-                        '''
+        stages {
+            stage('Push to Docker Hub') {
+                steps {
+                    script {
+                        withCredentials([
+                            usernamePassword(
+                                credentialsId: 'docker-hub-creds',
+                                usernameVariable: 'DOCKER_USER',
+                                passwordVariable: 'DOCKER_PASS'
+                            )
+                        ]) {
+                            sh '''
+                                # Login to Docker Hub
+                                echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+    
+                                # Push the image (replace with your actual image name)
+                                docker push yassine112/mon-app-web:latest
+                            '''
+                        }
                     }
                 }
             }
