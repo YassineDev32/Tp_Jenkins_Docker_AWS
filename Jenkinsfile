@@ -167,29 +167,30 @@ pipeline {
                 
         stage('Deploy to Review') {
             steps {
-                script {
-                    withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
-                        powershell '''
-                            # Use forward slashes for Windows compatibility
-                            $tempKey = "$env:TEMP/aws-key-${env:BUILD_NUMBER}.pem"
-                            Set-Content -Path $tempKey -Value $env:SSH_KEY
-                            icacls $tempKey /inheritance:r
-                            icacls $tempKey /grant:r "$env:USERNAME:R"
-
-                            try {
-                                ssh -i $tempKey -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "
-                                    docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                                    docker stop review-app || true
-                                    docker rm review-app || true
-                                    docker run -d -p 80:80 --name review-app ${env:DOCKER_IMAGE}:${env:VERSION}
-                                "
-                            } catch {
-                                Write-Host "Deployment failed: $_"
-                                exit 1
-                            } finally {
-                                Remove-Item $tempKey -Force -ErrorAction SilentlyContinue
-                            }
-                        '''
+                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
+                    script {
+                        // 1. Prepare the key file properly
+                        bat """
+                            copy "${SSH_KEY}" "%TEMP%\\aws-key-${BUILD_NUMBER}.pem"
+                            icacls "%TEMP%\\aws-key-${BUILD_NUMBER}.pem" /reset
+                            icacls "%TEMP%\\aws-key-${BUILD_NUMBER}.pem" /grant:r "%USERNAME%:(R)"
+                            icacls "%TEMP%\\aws-key-${BUILD_NUMBER}.pem" /inheritance:r
+                        """
+                        
+                        // 2. Execute deployment commands
+                        bat """
+                            ssh -i "%TEMP%\\aws-key-${BUILD_NUMBER}.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "
+                                docker pull %DOCKER_IMAGE%:%VERSION%
+                                docker stop review-app || true
+                                docker rm review-app || true
+                                docker run -d -p 80:80 --name review-app %DOCKER_IMAGE%:%VERSION%
+                            "
+                        """
+                        
+                        // 3. Clean up
+                        bat """
+                            del "%TEMP%\\aws-key-${BUILD_NUMBER}.pem"
+                        """
                     }
                 }
             }
