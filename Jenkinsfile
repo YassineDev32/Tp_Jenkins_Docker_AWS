@@ -191,9 +191,9 @@ pipeline {
                             ssh -i "%TEMP%\\aws-key-%BUILD_NUMBER%.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "
                                 docker pull %DOCKER_IMAGE%:%VERSION%
                                 docker stop review-app || true
-                                docker rm review-app || true 
+                                docker rm review-app || true
                                 docker run -d -p 80:80 --name review-app %DOCKER_IMAGE%:%VERSION%
-                            "
+                            " 2>&1
                         '''
                         
                         // 3. Clean up
