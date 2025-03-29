@@ -125,12 +125,24 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     script {
-                        // Create a temporary key file with proper permissions
-                        bat """
-                            copy "%SSH_KEY%" "%TEMP%\\review-key.pem"
-                            icacls "%TEMP%\\review-key.pem" /reset
-                            icacls "%TEMP%\\review-key.pem" /grant:r "%USERNAME%:(R)"
-                            icacls "%TEMP%\\review-key.pem" /inheritance:r
+                        // Create properly formatted key file
+                        powershell """
+                            $keyContent = [IO.File]::ReadAllText('${SSH_KEY}').Replace("`r`n","`n")
+                            [IO.File]::WriteAllText("${env:TEMP}\\review-key.pem", $keyContent)
+                        """
+                        
+                        // Set permissions using PowerShell (more reliable than icacls)
+                        powershell """
+                            $keyPath = "${env:TEMP}\\review-key.pem"
+                            $acl = Get-Acl $keyPath
+                            $acl.SetAccessRuleProtection($true, $false)
+                            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                                "${env:USERNAME}",
+                                "Read",
+                                "Allow"
+                            )
+                            $acl.SetAccessRule($rule)
+                            Set-Acl $keyPath $acl
                         """
                         
                         // Execute deployment commands
@@ -155,17 +167,26 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     script {
+                        powershell """
+                            $keyContent = [IO.File]::ReadAllText('${SSH_KEY}').Replace("`r`n","`n")
+                            [IO.File]::WriteAllText("${env:TEMP}\\staging-key.pem", $keyContent)
+                            $keyPath = "${env:TEMP}\\staging-key.pem"
+                            $acl = Get-Acl $keyPath
+                            $acl.SetAccessRuleProtection($true, $false)
+                            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                                "${env:USERNAME}",
+                                "Read",
+                                "Allow"
+                            )
+                            $acl.SetAccessRule($rule)
+                            Set-Acl $keyPath $acl
+                        """
+                        
                         bat """
-                            copy "%SSH_KEY%" "%TEMP%\\staging-key.pem"
-                            icacls "%TEMP%\\staging-key.pem" /reset
-                            icacls "%TEMP%\\staging-key.pem" /grant:r "%USERNAME%:(R)"
-                            icacls "%TEMP%\\staging-key.pem" /inheritance:r
-                            
                             ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker pull %DOCKER_IMAGE%:%VERSION%"
                             ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker stop staging-app 2> nul || echo No container to stop"
                             ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker rm staging-app 2> nul || echo No container to remove"
                             ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker run -d -p 80:80 --name staging-app %DOCKER_IMAGE%:%VERSION%"
-                            
                             del "%TEMP%\\staging-key.pem"
                         """
                     }
@@ -178,17 +199,26 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     script {
+                        powershell """
+                            $keyContent = [IO.File]::ReadAllText('${SSH_KEY}').Replace("`r`n","`n")
+                            [IO.File]::WriteAllText("${env:TEMP}\\production-key.pem", $keyContent)
+                            $keyPath = "${env:TEMP}\\production-key.pem"
+                            $acl = Get-Acl $keyPath
+                            $acl.SetAccessRuleProtection($true, $false)
+                            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                                "${env:USERNAME}",
+                                "Read",
+                                "Allow"
+                            )
+                            $acl.SetAccessRule($rule)
+                            Set-Acl $keyPath $acl
+                        """
+                        
                         bat """
-                            copy "%SSH_KEY%" "%TEMP%\\production-key.pem"
-                            icacls "%TEMP%\\production-key.pem" /reset
-                            icacls "%TEMP%\\production-key.pem" /grant:r "%USERNAME%:(R)"
-                            icacls "%TEMP%\\production-key.pem" /inheritance:r
-                            
                             ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker pull %DOCKER_IMAGE%:%VERSION%"
                             ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker stop production-app 2> nul || echo No container to stop"
                             ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker rm production-app 2> nul || echo No container to remove"
                             ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker run -d -p 80:80 --name production-app %DOCKER_IMAGE%:%VERSION%"
-                            
                             del "%TEMP%\\production-key.pem"
                         """
                     }
