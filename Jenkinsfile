@@ -127,98 +127,64 @@ pipeline {
                 withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     powershell '''
                         # Create temporary key file
-                        $tempKey = "$env:TEMP/aws-key-review.pem"
-                        Set-Content -Path $tempKey -Value $env:SSH_KEY
-                        icacls $tempKey /inheritance:r /grant:r "$env:USERNAME:R"
-
-                        try {
-                            # Deploy commands
-                            $commands = @"
-                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                                docker stop review-app || true
-                                docker rm review-app || true
-                                docker run -d -p 80:80 --name review-app ${env:DOCKER_IMAGE}:${env:VERSION}
-"@
-                            # Execute commands on remote server
-                            ssh -i $tempKey -o StrictHostKeyChecking=no ubuntu@${env:REVIEW_IP} "$commands"
-                            
-                            Write-Host "Successfully deployed to Review environment"
-                        } catch {
-                            Write-Host "Review deployment failed: $_"
-                            exit 1
-                        } finally {
-                            Remove-Item $tempKey -Force -ErrorAction SilentlyContinue
-                        }
+                        $keyFile = "$env:TEMP\\review-key.pem"
+                        [IO.File]::WriteAllText($keyFile, $env:SSH_KEY.Replace("`r`n","`n"))
+                        
+                        # Deploy commands
+                        ssh -i $keyFile -o StrictHostKeyChecking=no ubuntu@${env:REVIEW_IP} "
+                            docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
+                            docker stop review-app || true
+                            docker rm review-app || true
+                            docker run -d -p 80:80 --name review-app ${env:DOCKER_IMAGE}:${env:VERSION}
+                        "
+                        
+                        # Cleanup
+                        Remove-Item $keyFile -Force
+                        Write-Host "Successfully deployed to Review"
                     '''
                 }
             }
         }
 
         stage('Deploy to Staging') {
-            when {
-                expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
-            }
+            when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
             steps {
                 withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     powershell '''
-                        # Create temporary key file
-                        $tempKey = "$env:TEMP/aws-key-staging.pem"
-                        Set-Content -Path $tempKey -Value $env:SSH_KEY
-                        icacls $tempKey /inheritance:r /grant:r "$env:USERNAME:R"
-
-                        try {
-                            # Deploy commands
-                            $commands = @"
-                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                                docker stop staging-app || true
-                                docker rm staging-app || true
-                                docker run -d -p 80:80 --name staging-app ${env:DOCKER_IMAGE}:${env:VERSION}
-"@
-                            # Execute commands on remote server
-                            ssh -i $tempKey -o StrictHostKeyChecking=no ubuntu@${env:STAGING_IP} "$commands"
-                            
-                            Write-Host "Successfully deployed to Staging environment"
-                        } catch {
-                            Write-Host "Staging deployment failed: $_"
-                            exit 1
-                        } finally {
-                            Remove-Item $tempKey -Force -ErrorAction SilentlyContinue
-                        }
+                        $keyFile = "$env:TEMP\\staging-key.pem"
+                        [IO.File]::WriteAllText($keyFile, $env:SSH_KEY.Replace("`r`n","`n"))
+                        
+                        ssh -i $keyFile -o StrictHostKeyChecking=no ubuntu@${env:STAGING_IP} "
+                            docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
+                            docker stop staging-app || true
+                            docker rm staging-app || true
+                            docker run -d -p 80:80 --name staging-app ${env:DOCKER_IMAGE}:${env:VERSION}
+                        "
+                        
+                        Remove-Item $keyFile -Force
+                        Write-Host "Successfully deployed to Staging"
                     '''
                 }
             }
         }
 
         stage('Deploy to Production') {
-            when {
-                expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') }
-            }
+            when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
             steps {
                 withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     powershell '''
-                        # Create temporary key file
-                        $tempKey = "$env:TEMP/aws-key-production.pem"
-                        Set-Content -Path $tempKey -Value $env:SSH_KEY
-                        icacls $tempKey /inheritance:r /grant:r "$env:USERNAME:R"
-
-                        try {
-                            # Deploy commands
-                            $commands = @"
-                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                                docker stop production-app || true
-                                docker rm production-app || true
-                                docker run -d -p 80:80 --name production-app ${env:DOCKER_IMAGE}:${env:VERSION}
-"@
-                            # Execute commands on remote server
-                            ssh -i $tempKey -o StrictHostKeyChecking=no ubuntu@${env:PROD_IP} "$commands"
-                            
-                            Write-Host "Successfully deployed to Production environment"
-                        } catch {
-                            Write-Host "Production deployment failed: $_"
-                            exit 1
-                        } finally {
-                            Remove-Item $tempKey -Force -ErrorAction SilentlyContinue
-                        }
+                        $keyFile = "$env:TEMP\\production-key.pem"
+                        [IO.File]::WriteAllText($keyFile, $env:SSH_KEY.Replace("`r`n","`n"))
+                        
+                        ssh -i $keyFile -o StrictHostKeyChecking=no ubuntu@${env:PROD_IP} "
+                            docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
+                            docker stop production-app || true
+                            docker rm production-app || true
+                            docker run -d -p 80:80 --name production-app ${env:DOCKER_IMAGE}:${env:VERSION}
+                        "
+                        
+                        Remove-Item $keyFile -Force
+                        Write-Host "Successfully deployed to Production"
                     '''
                 }
             }
