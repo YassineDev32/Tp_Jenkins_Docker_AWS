@@ -123,24 +123,22 @@ pipeline {
 
         stage('Deploy to Review') {
             steps {
-                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
-                    powershell '''
-                        # Create temporary key file
-                        $keyFile = "$env:TEMP\\review-key.pem"
-                        [IO.File]::WriteAllText($keyFile, $env:SSH_KEY.Replace("`r`n","`n"))
-                        
-                        # Deploy commands
-                        ssh -i $keyFile -o StrictHostKeyChecking=no ubuntu@${env:REVIEW_IP} "
-                            docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                            docker stop review-app || true
-                            docker rm review-app || true
-                            docker run -d -p 80:80 --name review-app ${env:DOCKER_IMAGE}:${env:VERSION}
-                        "
-                        
-                        # Cleanup
-                        Remove-Item $keyFile -Force
-                        Write-Host "Successfully deployed to Review"
-                    '''
+                withCredentials([file(credentialsId: 'aws-ssh-key-file', variable: 'SSH_KEY')]) {
+                    script {
+                        bat """
+                            icacls "${SSH_KEY}" /reset
+                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
+                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
+                            icacls "${SSH_KEY}" /inheritance:r
+                            
+                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:REVIEW_IP} "
+                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
+                                docker stop review-app || true
+                                docker rm review-app || true
+                                docker run -d -p 80:80 --name review-app ${env:DOCKER_IMAGE}:${env:VERSION}
+                            "
+                        """
+                    }
                 }
             }
         }
@@ -148,21 +146,22 @@ pipeline {
         stage('Deploy to Staging') {
             when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
             steps {
-                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
-                    powershell '''
-                        $keyFile = "$env:TEMP\\staging-key.pem"
-                        [IO.File]::WriteAllText($keyFile, $env:SSH_KEY.Replace("`r`n","`n"))
-                        
-                        ssh -i $keyFile -o StrictHostKeyChecking=no ubuntu@${env:STAGING_IP} "
-                            docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                            docker stop staging-app || true
-                            docker rm staging-app || true
-                            docker run -d -p 80:80 --name staging-app ${env:DOCKER_IMAGE}:${env:VERSION}
-                        "
-                        
-                        Remove-Item $keyFile -Force
-                        Write-Host "Successfully deployed to Staging"
-                    '''
+                withCredentials([file(credentialsId: 'aws-ssh-key-file', variable: 'SSH_KEY')]) {
+                    script {
+                        bat """
+                            icacls "${SSH_KEY}" /reset
+                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
+                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
+                            icacls "${SSH_KEY}" /inheritance:r
+                            
+                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:STAGING_IP} "
+                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
+                                docker stop staging-app || true
+                                docker rm staging-app || true
+                                docker run -d -p 80:80 --name staging-app ${env:DOCKER_IMAGE}:${env:VERSION}
+                            "
+                        """
+                    }
                 }
             }
         }
@@ -170,21 +169,22 @@ pipeline {
         stage('Deploy to Production') {
             when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
             steps {
-                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
-                    powershell '''
-                        $keyFile = "$env:TEMP\\production-key.pem"
-                        [IO.File]::WriteAllText($keyFile, $env:SSH_KEY.Replace("`r`n","`n"))
-                        
-                        ssh -i $keyFile -o StrictHostKeyChecking=no ubuntu@${env:PROD_IP} "
-                            docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                            docker stop production-app || true
-                            docker rm production-app || true
-                            docker run -d -p 80:80 --name production-app ${env:DOCKER_IMAGE}:${env:VERSION}
-                        "
-                        
-                        Remove-Item $keyFile -Force
-                        Write-Host "Successfully deployed to Production"
-                    '''
+                withCredentials([file(credentialsId: 'aws-ssh-key-file', variable: 'SSH_KEY')]) {
+                    script {
+                        bat """
+                            icacls "${SSH_KEY}" /reset
+                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
+                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
+                            icacls "${SSH_KEY}" /inheritance:r
+                            
+                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:PROD_IP} "
+                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
+                                docker stop production-app || true
+                                docker rm production-app || true
+                                docker run -d -p 80:80 --name production-app ${env:DOCKER_IMAGE}:${env:VERSION}
+                            "
+                        """
+                    }
                 }
             }
         }
