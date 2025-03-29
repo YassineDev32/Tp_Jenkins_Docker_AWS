@@ -123,7 +123,7 @@ pipeline {
 
         stage('Deploy to Review') {
             steps {
-                withCredentials([file(credentialsId: 'aws-ssh-key-file', variable: 'SSH_KEY')]) {
+                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     script {
                         bat """
                             icacls "${SSH_KEY}" /reset
@@ -146,7 +146,7 @@ pipeline {
         stage('Deploy to Staging') {
             when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
             steps {
-                withCredentials([file(credentialsId: 'aws-ssh-key-file', variable: 'SSH_KEY')]) {
+                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     script {
                         bat """
                             icacls "${SSH_KEY}" /reset
@@ -169,7 +169,7 @@ pipeline {
         stage('Deploy to Production') {
             when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
             steps {
-                withCredentials([file(credentialsId: 'aws-ssh-key-file', variable: 'SSH_KEY')]) {
+                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     script {
                         bat """
                             icacls "${SSH_KEY}" /reset
