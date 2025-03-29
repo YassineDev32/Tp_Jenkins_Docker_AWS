@@ -52,21 +52,55 @@ pipeline {
                     )
                 ]) {
                     powershell '''
+                        # Create auth token
                         $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${env:DOCKER_USER}:${env:DOCKER_PASS}"))
-                        @{"auths"=@{"https://index.docker.io/v1/"=@{"auth"="$auth"}}} | ConvertTo-Json | Out-File "$env:USERPROFILE/.docker/config.json"
-                        docker pull hello-world || throw "Login verification failed"
+                        
+                        # Create Docker config
+                        $config = @{
+                            auths = @{
+                                "https://index.docker.io/v1/" = @{
+                                    auth = "$auth"
+                                }
+                            }
+                        }
+                        
+                        # Save config
+                        $config | ConvertTo-Json | Out-File "$env:USERPROFILE/.docker/config.json"
+                        
+                        # Verify login (PowerShell-style error handling)
+                        docker pull hello-world
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker login verification failed"
+                        }
+                        
+                        Write-Host "Successfully authenticated with Docker Hub"
                     '''
                 }
             }
         }
-
+        
         stage('Push to Docker Hub') {
             steps {
                 powershell '''
-                    docker push "${env:DOCKER_IMAGE}:${env:VERSION}" || {
-                        Write-Host "Push failed, retrying..."
+                    # Try push with retry logic
+                    $retryCount = 0
+                    $maxRetries = 2
+                    
+                    while ($true) {
+                        docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                        
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Host "Image pushed successfully"
+                            break
+                        }
+                        
+                        $retryCount++
+                        if ($retryCount -ge $maxRetries) {
+                            throw "Failed to push image after $maxRetries attempts"
+                        }
+                        
+                        Write-Host "Push failed, retrying in 5 seconds..."
                         Start-Sleep -Seconds 5
-                        docker push "${env:DOCKER_IMAGE}:${env:VERSION}" || throw "Push failed after retry"
                     }
                 '''
             }
