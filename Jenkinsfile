@@ -90,17 +90,16 @@ pipeline {
                                 [Text.Encoding]::ASCII.GetBytes("${env:DOCKER_USER}:${env:DOCKER_PASS}")
                             )
                             
-                            # Create the Docker config file
-                            $dockerConfig = @"
-        {
-            "auths": {
-                "https://index.docker.io/v1/": {
-                    "auth": "$authToken"
-                }
-            }
-        }
-        "@
-                            $dockerConfig | Out-File -FilePath "$dockerConfigDir/config.json" -Encoding ascii
+                            # Create the Docker config file without here-string issues
+                            $dockerConfigContent = '{
+                                "auths": {
+                                    "https://index.docker.io/v1/": {
+                                        "auth": "' + $authToken + '"
+                                    }
+                                }
+                            }'
+                            
+                            $dockerConfigContent | Out-File -FilePath "$dockerConfigDir/config.json" -Encoding ascii
                             
                             # Verify the login works
                             docker pull hello-world
