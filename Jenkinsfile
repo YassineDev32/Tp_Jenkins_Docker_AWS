@@ -79,11 +79,36 @@ pipeline {
                             docker logout
                             Remove-Item -Path "$env:USERPROFILE/.docker/config.json" -Force -ErrorAction SilentlyContinue
                             
-                            # Login to Docker Hub
-                            echo "${env:DOCKER_PASS}" | docker login -u "${env:DOCKER_USER}" --password-stdin
-                            if ($LASTEXITCODE -ne 0) {
-                                throw "Docker login failed - check credentials"
+                            # Create Docker config directory if it doesn't exist
+                            $dockerConfigDir = "$env:USERPROFILE/.docker"
+                            if (-not (Test-Path $dockerConfigDir)) {
+                                New-Item -ItemType Directory -Path $dockerConfigDir -Force | Out-Null
                             }
+                            
+                            # Create auth token (base64 encoded username:password)
+                            $authToken = [Convert]::ToBase64String(
+                                [Text.Encoding]::ASCII.GetBytes("${env:DOCKER_USER}:${env:DOCKER_PASS}")
+                            )
+                            
+                            # Create the Docker config file
+                            $dockerConfig = @"
+        {
+            "auths": {
+                "https://index.docker.io/v1/": {
+                    "auth": "$authToken"
+                }
+            }
+        }
+        "@
+                            $dockerConfig | Out-File -FilePath "$dockerConfigDir/config.json" -Encoding ascii
+                            
+                            # Verify the login works
+                            docker pull hello-world
+                            if ($LASTEXITCODE -ne 0) {
+                                throw "Docker authentication verification failed"
+                            }
+                            
+                            Write-Host "Successfully authenticated with Docker Hub"
                         '''
                     }
                 }
