@@ -3,6 +3,7 @@ pipeline {
     
     environment {
         AWS_SSH_KEY = credentials('aws-key.pem')
+        DOCKERHUB_CREDENTIALS=credentials('docker-hub-creds')
         DOCKER_IMAGE = "yassine112/mon-app-web"
         VERSION = "${env.BUILD_NUMBER ?: 'latest'}"
         REVIEW_IP = "51.21.180.149"
@@ -64,76 +65,20 @@ pipeline {
             }
         }
 
-        stage('Push to Docker Hub') {
-            steps {
-                script {
-                    // First verify Docker Hub connectivity
-                    powershell '''
-                        Write-Host "=== Network Pre-Check ==="
-                        $dns = Resolve-DnsName registry-1.docker.io -ErrorAction SilentlyContinue
-                        if (-not $dns) { throw "DNS resolution failed" }
-                        Write-Host "DNS resolved to: $($dns.IPAddress)"
-                        
-                        $tcp = Test-NetConnection registry-1.docker.io -Port 443 -InformationLevel Quiet
-                        if (-not $tcp) { throw "TCP connection failed" }
-                        Write-Host "TCP connection successful"
-                    '''
-                    
-                    // Use direct credential injection (most reliable method)
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: 'docker-hub-creds',
-                            usernameVariable: 'DOCKERHUB_USER',
-                            passwordVariable: 'DOCKERHUB_PASS'
-                        )
-                    ]) {
-                        powershell '''
-                            # Complete Docker config reset
-                            docker logout
-                            Remove-Item -Path "$env:USERPROFILE/.docker/config.json" -Force -ErrorAction SilentlyContinue
-                            
-                            # Manual credential injection (bypasses all Jenkins masking issues)
-                            $auth = [Convert]::ToBase64String(
-                                [Text.Encoding]::ASCII.GetBytes("${env:DOCKERHUB_USER}:${env:DOCKERHUB_PASS}")
-                            )
-                            
-                            # Create Docker config manually
-                            $config = @"
-                            {
-                                "auths": {
-                                    "https://index.docker.io/v1/": {
-                                        "auth": "$auth"
-                                    }
-                                }
-                            }
-        "@
-                            $configPath = "$env:USERPROFILE/.docker/config.json"
-                            New-Item -Path (Split-Path $configPath) -ItemType Directory -Force | Out-Null
-                            $config | Out-File -FilePath $configPath -Encoding ascii
-                            
-                            # Verify authentication
-                            docker pull hello-world
-                            if ($LASTEXITCODE -ne 0) {
-                                throw "Docker authentication verification failed"
-                            }
-                            
-                            # Push with retries
-                            $maxRetries = 3
-                            for ($i=1; $i -le $maxRetries; $i++) {
-                                Write-Host "Push attempt $i/$maxRetries"
-                                docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
-                                if ($LASTEXITCODE -eq 0) { 
-                                    Write-Host "Push successful!" 
-                                    break 
-                                }
-                                if ($i -lt $maxRetries) { Start-Sleep -Seconds 10 }
-                            }
-                            if ($LASTEXITCODE -ne 0) { throw "Failed after $maxRetries attempts" }
-                        '''
-                    }
-                }
-            }
-        }
+        stage('Login') {
+
+			steps {
+				sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
+			}
+		}
+
+		stage('Push') {
+
+			steps {
+				sh 'docker push yassine112/mon-app-web:latest'
+			}
+		}
+                
         stage('Deploy to Review') {
             steps {
                 script {
