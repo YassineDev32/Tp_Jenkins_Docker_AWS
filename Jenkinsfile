@@ -177,7 +177,7 @@ pipeline {
                             icacls $tempKey /grant:r "$env:USERNAME:R"
 
                             try {
-                                ssh -i $tempKey -o StrictHostKeyChecking=no ubuntu@${env:REVIEW_IP} "
+                                ssh -i $tempKey -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "
                                     docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
                                     docker stop review-app || true
                                     docker rm review-app || true
