@@ -75,43 +75,65 @@ pipeline {
                         )
                     ]) {
                         powershell '''
-                            # 1. Completely reset Docker configuration
-                            Write-Host "=== Resetting Docker configuration ==="
-                            docker logout
-                            Remove-Item -Path "$env:USERPROFILE/.docker/config.json" -Force -ErrorAction SilentlyContinue
-                            
-                            # 2. Verify credentials are properly set
-                            if ([string]::IsNullOrEmpty($env:DOCKER_USER) -or [string]::IsNullOrEmpty($env:DOCKER_PASS)) {
-                                throw "ERROR: Docker credentials not properly configured"
+                            # 1. Comprehensive network diagnostics
+                            Write-Host "=== Network Diagnostics ==="
+                            Write-Host "Testing DNS resolution..."
+                            $dnsTest = Resolve-DnsName registry-1.docker.io -ErrorAction SilentlyContinue
+                            if (-not $dnsTest) {
+                                throw "DNS ERROR: Cannot resolve registry-1.docker.io"
                             }
-                            
-                            # 3. Login using simple echo method (no here-string)
-                            $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
-                            
-                            if ($LASTEXITCODE -ne 0) {
-                                throw "ERROR: Docker login failed (check credentials and network)"
-                            }
-                            
-                            # 4. Push with retries
-                            $maxRetries = 3
-                            $retryCount = 0
-                            do {
-                                Write-Host "Push attempt $($retryCount + 1)/$maxRetries"
-                                docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
-                                
-                                if ($LASTEXITCODE -eq 0) {
-                                    Write-Host "SUCCESS: Image pushed to Docker Hub"
-                                    break
-                                }
-                                
-                                $retryCount++
-                                if ($retryCount -lt $maxRetries) {
-                                    Start-Sleep -Seconds 10
-                                }
-                            } while ($retryCount -lt $maxRetries)
+                            Write-Host "DNS resolved to: $($dnsTest.IPAddress)"
         
-                            if ($retryCount -eq $maxRetries) {
-                                throw "ERROR: Failed to push after $maxRetries attempts"
+                            Write-Host "Testing TCP connectivity..."
+                            $tcpTest = Test-NetConnection registry-1.docker.io -Port 443 -InformationLevel Detailed
+                            if (-not $tcpTest.TcpTestSucceeded) {
+                                throw "NETWORK ERROR: Cannot connect to registry-1.docker.io:443"
+                            }
+                            Write-Host "Connection successful"
+        
+                            # 2. Verify credentials format
+                            Write-Host "=== Credential Verification ==="
+                            Write-Host "Username length: $($env:DOCKER_USER.Length)"
+                            Write-Host "Password length: $($env:DOCKER_PASS.Length)"
+                            
+                            # 3. Alternative authentication method
+                            Write-Host "=== Trying Alternative Authentication ==="
+                            try {
+                                $tempCredFile = "$env:TEMP/docker-creds-$(Get-Random).txt"
+                                "https://$($env:DOCKER_USER):$($env:DOCKER_PASS)@registry-1.docker.io" | Out-File $tempCredFile -Encoding ASCII
+                                
+                                Get-Content $tempCredFile | docker login --username $env:DOCKER_USER --password-stdin
+                                
+                                if ($LASTEXITCODE -ne 0) {
+                                    # Try with raw echo if file method fails
+                                    Write-Host "Trying direct echo method..."
+                                    $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
+                                }
+        
+                                if ($LASTEXITCODE -ne 0) {
+                                    throw "FINAL ERROR: All authentication methods failed"
+                                }
+        
+                                # 4. Push with retries
+                                $maxRetries = 3
+                                for ($i = 1; $i -le $maxRetries; $i++) {
+                                    Write-Host "Push attempt $i/$maxRetries"
+                                    docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                                    
+                                    if ($LASTEXITCODE -eq 0) {
+                                        Write-Host "SUCCESS: Image pushed to Docker Hub"
+                                        break
+                                    }
+                                    
+                                    if ($i -lt $maxRetries) {
+                                        Start-Sleep -Seconds 10
+                                    }
+                                }
+                            }
+                            finally {
+                                if (Test-Path $tempCredFile) {
+                                    Remove-Item $tempCredFile -Force
+                                }
                             }
                         '''
                     }
