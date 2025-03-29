@@ -141,6 +141,29 @@ pipeline {
                 }
             }
         }
+
+        stage('Test SSH Connection') {
+            steps {
+                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
+                    script {
+                        // 1. Corriger les permissions (Windows)
+                        bat """
+                            icacls "${SSH_KEY}" /reset
+                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
+                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
+                            icacls "${SSH_KEY}" /inheritance:r
+                        """
+                        
+                        // 2. Tester la connexion
+                        bat """
+                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "echo 'Connexion réussie !'"
+                            ssh -i "${SSH_KEY}" ubuntu@%REVIEW_IP% "docker --version"
+                            ssh -i "${SSH_KEY}" ubuntu@%REVIEW_IP% "whoami && hostname"
+                        """
+                    }
+                }
+            }
+        }
                 
         stage('Deploy to Review') {
             steps {
