@@ -67,67 +67,11 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 script {
+                    // Use the credential ID 'docker-hub-pat'
                     withCredentials([string(credentialsId: 'docker-hub-pat', variable: 'DOCKER_TOKEN')]) {
                         powershell '''
-                            # COMPLETELY RESET DOCKER CONFIG
-                            Write-Host "=== Resetting Docker configuration ==="
-                            docker logout
-                            Remove-Item -Path "~/.docker/config.json" -Force -ErrorAction SilentlyContinue
-                            $env:DOCKER_CONFIG = "$env:TEMP\docker-config"
-                            New-Item -Path $env:DOCKER_CONFIG -ItemType Directory -Force | Out-Null
-        
-                            # VERIFY TOKEN FORMAT
-                            Write-Host "=== Verifying token format ==="
-                            $token = $env:DOCKER_TOKEN.Trim()
-                            if (-not $token.StartsWith("dckr_pat_")) {
-                                throw "CRITICAL: Invalid token format - must start with 'dckr_pat_'"
-                            }
-                            Write-Host "Token format verified (starts with dckr_pat_)"
-        
-                            # TEST CONNECTIVITY
-                            Write-Host "=== Testing Docker Hub connectivity ==="
-                            $connection = Test-NetConnection -ComputerName registry-1.docker.io -Port 443 -InformationLevel Quiet
-                            if (-not $connection) {
-                                throw "NETWORK ERROR: Cannot connect to registry-1.docker.io:443"
-                            }
-                            Write-Host "Network connectivity verified"
-        
-                            # ALTERNATE LOGIN METHOD (MORE RELIABLE)
-                            Write-Host "=== Attempting Docker login ==="
-                            $tempCredFile = "$env:TEMP\docker-cred.txt"
-                            "https://yassine112:$token@registry-1.docker.io" | Out-File -FilePath $tempCredFile -Encoding ascii
-                            
-                            try {
-                                docker login --username yassine112 --password-stdin < $tempCredFile
-                                if ($LASTEXITCODE -ne 0) {
-                                    throw "Docker login failed"
-                                }
-                                Write-Host "Docker login SUCCEEDED"
-        
-                                # PUSH WITH RETRIES
-                                Write-Host "=== Pushing image ==="
-                                $maxRetries = 3
-                                $retryCount = 0
-                                do {
-                                    docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
-                                    if ($LASTEXITCODE -eq 0) {
-                                        Write-Host "Image pushed successfully!"
-                                        break
-                                    }
-                                    $retryCount++
-                                    if ($retryCount -lt $maxRetries) {
-                                        Write-Host "Retrying push ($retryCount/$maxRetries)..."
-                                        Start-Sleep -Seconds 10
-                                    }
-                                } while ($retryCount -lt $maxRetries)
-        
-                                if ($retryCount -eq $maxRetries) {
-                                    throw "Failed to push after $maxRetries attempts"
-                                }
-                            }
-                            finally {
-                                Remove-Item -Path $tempCredFile -Force -ErrorAction SilentlyContinue
-                            }
+                            echo "${env:DOCKER_TOKEN}" | docker login -u "yassine112" --password-stdin
+                            docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
                         '''
                     }
                 }
