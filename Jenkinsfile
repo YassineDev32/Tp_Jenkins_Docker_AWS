@@ -127,22 +127,22 @@ pipeline {
                     script {
                         // Create properly formatted key file
                         powershell """
-                            $keyContent = [IO.File]::ReadAllText('${SSH_KEY}').Replace("`r`n","`n")
-                            [IO.File]::WriteAllText("${env:TEMP}\\review-key.pem", $keyContent)
+                            \$keyContent = [IO.File]::ReadAllText('${SSH_KEY}').Replace("`r`n","`n")
+                            [IO.File]::WriteAllText("\${env:TEMP}\\review-key.pem", \$keyContent)
                         """
                         
                         // Set permissions using PowerShell (more reliable than icacls)
                         powershell """
-                            $keyPath = "${env:TEMP}\\review-key.pem"
-                            $acl = Get-Acl $keyPath
-                            $acl.SetAccessRuleProtection($true, $false)
-                            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-                                "${env:USERNAME}",
+                            \$keyPath = "\${env:TEMP}\\review-key.pem"
+                            \$acl = Get-Acl \$keyPath
+                            \$acl.SetAccessRuleProtection(`$true, `$false)
+                            \$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                                "\${env:USERNAME}",
                                 "Read",
                                 "Allow"
                             )
-                            $acl.SetAccessRule($rule)
-                            Set-Acl $keyPath $acl
+                            \$acl.SetAccessRule(\$rule)
+                            Set-Acl \$keyPath \$acl
                         """
                         
                         // Execute deployment commands
