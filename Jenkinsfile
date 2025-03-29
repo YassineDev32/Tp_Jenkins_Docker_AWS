@@ -123,20 +123,27 @@ pipeline {
 
         stage('Deploy to Review') {
             steps {
-                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
+                withCredentials([file(credentialsId: 'aws-ssh-key-file', variable: 'SSH_KEY')]) {
                     script {
+                        // Create a temporary key file with proper permissions
                         bat """
-                            icacls "${SSH_KEY}" /reset
-                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
-                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
-                            icacls "${SSH_KEY}" /inheritance:r
-                            
-                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:REVIEW_IP} "
-                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                                docker stop review-app || true
-                                docker rm review-app || true
-                                docker run -d -p 80:80 --name review-app ${env:DOCKER_IMAGE}:${env:VERSION}
-                            "
+                            copy "%SSH_KEY%" "%TEMP%\\review-key.pem"
+                            icacls "%TEMP%\\review-key.pem" /reset
+                            icacls "%TEMP%\\review-key.pem" /grant:r "%USERNAME%:(R)"
+                            icacls "%TEMP%\\review-key.pem" /inheritance:r
+                        """
+                        
+                        // Execute deployment commands
+                        bat """
+                            ssh -i "%TEMP%\\review-key.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "docker pull %DOCKER_IMAGE%:%VERSION%"
+                            ssh -i "%TEMP%\\review-key.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "docker stop review-app 2> nul || echo No container to stop"
+                            ssh -i "%TEMP%\\review-key.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "docker rm review-app 2> nul || echo No container to remove"
+                            ssh -i "%TEMP%\\review-key.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "docker run -d -p 80:80 --name review-app %DOCKER_IMAGE%:%VERSION%"
+                        """
+                        
+                        // Clean up
+                        bat """
+                            del "%TEMP%\\review-key.pem"
                         """
                     }
                 }
@@ -146,20 +153,20 @@ pipeline {
         stage('Deploy to Staging') {
             when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
             steps {
-                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
+                withCredentials([file(credentialsId: 'aws-ssh-key-file', variable: 'SSH_KEY')]) {
                     script {
                         bat """
-                            icacls "${SSH_KEY}" /reset
-                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
-                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
-                            icacls "${SSH_KEY}" /inheritance:r
+                            copy "%SSH_KEY%" "%TEMP%\\staging-key.pem"
+                            icacls "%TEMP%\\staging-key.pem" /reset
+                            icacls "%TEMP%\\staging-key.pem" /grant:r "%USERNAME%:(R)"
+                            icacls "%TEMP%\\staging-key.pem" /inheritance:r
                             
-                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:STAGING_IP} "
-                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                                docker stop staging-app || true
-                                docker rm staging-app || true
-                                docker run -d -p 80:80 --name staging-app ${env:DOCKER_IMAGE}:${env:VERSION}
-                            "
+                            ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker pull %DOCKER_IMAGE%:%VERSION%"
+                            ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker stop staging-app 2> nul || echo No container to stop"
+                            ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker rm staging-app 2> nul || echo No container to remove"
+                            ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker run -d -p 80:80 --name staging-app %DOCKER_IMAGE%:%VERSION%"
+                            
+                            del "%TEMP%\\staging-key.pem"
                         """
                     }
                 }
@@ -169,20 +176,20 @@ pipeline {
         stage('Deploy to Production') {
             when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
             steps {
-                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
+                withCredentials([file(credentialsId: 'aws-ssh-key-file', variable: 'SSH_KEY')]) {
                     script {
                         bat """
-                            icacls "${SSH_KEY}" /reset
-                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
-                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
-                            icacls "${SSH_KEY}" /inheritance:r
+                            copy "%SSH_KEY%" "%TEMP%\\production-key.pem"
+                            icacls "%TEMP%\\production-key.pem" /reset
+                            icacls "%TEMP%\\production-key.pem" /grant:r "%USERNAME%:(R)"
+                            icacls "%TEMP%\\production-key.pem" /inheritance:r
                             
-                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:PROD_IP} "
-                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                                docker stop production-app || true
-                                docker rm production-app || true
-                                docker run -d -p 80:80 --name production-app ${env:DOCKER_IMAGE}:${env:VERSION}
-                            "
+                            ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker pull %DOCKER_IMAGE%:%VERSION%"
+                            ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker stop production-app 2> nul || echo No container to stop"
+                            ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker rm production-app 2> nul || echo No container to remove"
+                            ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker run -d -p 80:80 --name production-app %DOCKER_IMAGE%:%VERSION%"
+                            
+                            del "%TEMP%\\production-key.pem"
                         """
                     }
                 }
