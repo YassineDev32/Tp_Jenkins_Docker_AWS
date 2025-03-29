@@ -52,23 +52,50 @@ pipeline {
 
         stage('Login to Docker Hub') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'docker-hub-creds',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
-                    powershell '''
-                        docker logout
-                        Remove-Item -Path "$env:USERPROFILE/.docker/config.json" -Force -ErrorAction SilentlyContinue
-                        
-                        $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${env:DOCKER_USER}:${env:DOCKER_PASS}"))
-                        @{"auths"=@{"https://index.docker.io/v1/"=@{"auth"="$auth"}}} | ConvertTo-Json | Out-File "$env:USERPROFILE/.docker/config.json"
-                        
-                        docker pull hello-world
-                        if ($LASTEXITCODE -ne 0) { throw "Login verification failed" }
-                    '''
+                script {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'docker-hub-creds',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        )
+                    ]) {
+                        powershell '''
+                            # Clear existing credentials
+                            docker logout
+                            Remove-Item -Path "$env:USERPROFILE/.docker/config.json" -Force -ErrorAction SilentlyContinue
+                            
+                            # Create Docker config directory if it doesn't exist
+                            $dockerConfigDir = "$env:USERPROFILE/.docker"
+                            if (-not (Test-Path $dockerConfigDir)) {
+                                New-Item -ItemType Directory -Path $dockerConfigDir -Force | Out-Null
+                            }
+                            
+                            # Create auth token (base64 encoded username:password)
+                            $authToken = [Convert]::ToBase64String(
+                                [Text.Encoding]::ASCII.GetBytes("${env:DOCKER_USER}:${env:DOCKER_PASS}")
+                            )
+                            
+                            # Create the Docker config file without here-string issues
+                            $dockerConfigContent = '{
+                                "auths": {
+                                    "https://index.docker.io/v1/": {
+                                        "auth": "' + $authToken + '"
+                                    }
+                                }
+                            }'
+                            
+                            $dockerConfigContent | Out-File -FilePath "$dockerConfigDir/config.json" -Encoding ascii
+                            
+                            # Verify the login works
+                            docker pull hello-world
+                            if ($LASTEXITCODE -ne 0) {
+                                throw "Docker authentication verification failed"
+                            }
+                            
+                            Write-Host "Successfully authenticated with Docker Hub"
+                        '''
+                    }
                 }
             }
         }
