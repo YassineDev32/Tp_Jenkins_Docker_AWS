@@ -3,7 +3,6 @@ pipeline {
     
     environment {
         AWS_SSH_KEY = credentials('aws-key.pem')
-        DOCKERHUB_CREDENTIALS=credentials('docker-hub-creds')
         DOCKER_IMAGE = "yassine112/mon-app-web"
         VERSION = "${env.BUILD_NUMBER ?: 'latest'}"
         REVIEW_IP = "51.21.180.149"
@@ -65,26 +64,66 @@ pipeline {
             }
         }
 
-        stage('Login') {
+        stage('Login to Docker Hub') {
+            steps {
+                script {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'docker-hub-creds',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        )
+                    ]) {
+                        powershell '''
+                            # Clear existing credentials
+                            docker logout
+                            Remove-Item -Path "$env:USERPROFILE/.docker/config.json" -Force -ErrorAction SilentlyContinue
+                            
+                            # Login to Docker Hub
+                            echo "${env:DOCKER_PASS}" | docker login -u "${env:DOCKER_USER}" --password-stdin
+                            if ($LASTEXITCODE -ne 0) {
+                                throw "Docker login failed - check credentials"
+                            }
+                        '''
+                    }
+                }
+            }
+        }
 
-			steps {
-				powershell 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
-			}
-		}
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    powershell '''
+                        # Push with retries
+                        $maxRetries = 3
+                        $retryCount = 0
+                        do {
+                            docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-Host "Successfully pushed ${env:DOCKER_IMAGE}:${env:VERSION}"
+                                break
+                            }
+                            $retryCount++
+                            if ($retryCount -lt $maxRetries) {
+                                Start-Sleep -Seconds 10
+                                Write-Host "Retrying push ($retryCount/$maxRetries)..."
+                            }
+                        } while ($retryCount -lt $maxRetries)
 
-		stage('Push') {
-
-			steps {
-				powershell 'docker push yassine112/mon-app-web:latest'
-			}
-		}
+                        if ($retryCount -eq $maxRetries) {
+                            throw "Failed to push after $maxRetries attempts"
+                        }
+                    '''
+                }
+            }
+        }
                 
         stage('Deploy to Review') {
             steps {
                 script {
                     withCredentials([file(credentialsId: 'aws-key', variable: 'SSH_KEY')]) {
                         powershell '''
-                            # Fix: Use forward slashes or double backslashes for Windows paths
+                            # Use forward slashes for Windows compatibility
                             $tempKey = "$env:TEMP/aws-key-${env:BUILD_NUMBER}.pem"
                             Set-Content -Path $tempKey -Value $env:SSH_KEY
                             icacls $tempKey /inheritance:r
