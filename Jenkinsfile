@@ -169,28 +169,37 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     script {
-                        // 1. Prepare the key file properly
-                        bat """
-                            copy "${SSH_KEY}" "%TEMP%\\aws-key-${BUILD_NUMBER}.pem"
-                            icacls "%TEMP%\\aws-key-${BUILD_NUMBER}.pem" /reset
-                            icacls "%TEMP%\\aws-key-${BUILD_NUMBER}.pem" /grant:r "%USERNAME%:(R)"
-                            icacls "%TEMP%\\aws-key-${BUILD_NUMBER}.pem" /inheritance:r
-                        """
+                        // 1. Prepare the key file with proper permissions
+                        powershell '''
+                            $tempKey = "$env:TEMP\\aws-key-$env:BUILD_NUMBER.pem"
+                            
+                            # Copy key content with Unix line endings
+                            (Get-Content $env:SSH_KEY -Raw).Replace("`r`n","`n") | Out-File $tempKey -Encoding ascii
+                            
+                            # Remove inheritance and clear all permissions
+                            icacls $tempKey /inheritance:r
+                            icacls $tempKey /grant:r "$env:USERNAME:(R)"
+                            icacls $tempKey /grant:r "SYSTEM:(R)"
+                            
+                            # Verify permissions
+                            $acl = Get-Acl $tempKey
+                            $acl.Access | Format-Table IdentityReference,FileSystemRights,AccessControlType -AutoSize
+                        '''
                         
                         // 2. Execute deployment commands
-                        bat """
-                            ssh -i "%TEMP%\\aws-key-${BUILD_NUMBER}.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "
+                        bat '''
+                            ssh -i "%TEMP%\\aws-key-%BUILD_NUMBER%.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "
                                 docker pull %DOCKER_IMAGE%:%VERSION%
                                 docker stop review-app || true
-                                docker rm review-app || true
+                                docker rm review-app || true 
                                 docker run -d -p 80:80 --name review-app %DOCKER_IMAGE%:%VERSION%
                             "
-                        """
+                        '''
                         
                         // 3. Clean up
-                        bat """
-                            del "%TEMP%\\aws-key-${BUILD_NUMBER}.pem"
-                        """
+                        bat '''
+                            del "%TEMP%\\aws-key-%BUILD_NUMBER%.pem"
+                        '''
                     }
                 }
             }
