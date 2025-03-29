@@ -125,37 +125,18 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     script {
-                        // Create properly formatted key file
-                        powershell """
-                            \$keyContent = [IO.File]::ReadAllText('${SSH_KEY}').Replace("`r`n","`n")
-                            [IO.File]::WriteAllText("\${env:TEMP}\\review-key.pem", \$keyContent)
-                        """
-                        
-                        // Set permissions using PowerShell (more reliable than icacls)
-                        powershell '''
-                            $keyPath = "$env:TEMP\\review-key.pem"
-                            $acl = Get-Acl $keyPath
-                            $acl.SetAccessRuleProtection($true, $false)
-                            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-                                "$env:USERNAME",
-                                "Read",
-                                "Allow"
-                            )
-                            $acl.SetAccessRule($rule)
-                            Set-Acl $keyPath $acl
-                        '''
-                        
-                        // Execute deployment commands
                         bat """
-                            ssh -i "%TEMP%\\review-key.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "docker pull %DOCKER_IMAGE%:%VERSION%"
-                            ssh -i "%TEMP%\\review-key.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "docker stop review-app 2> nul || echo No container to stop"
-                            ssh -i "%TEMP%\\review-key.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "docker rm review-app 2> nul || echo No container to remove"
-                            ssh -i "%TEMP%\\review-key.pem" -o StrictHostKeyChecking=no ubuntu@%REVIEW_IP% "docker run -d -p 80:80 --name review-app %DOCKER_IMAGE%:%VERSION%"
-                        """
-                        
-                        // Clean up
-                        bat """
-                            del "%TEMP%\\review-key.pem"
+                            icacls "${SSH_KEY}" /reset
+                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
+                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
+                            icacls "${SSH_KEY}" /inheritance:r
+                            
+                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:REVIEW_IP} "
+                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
+                                docker stop review-app || true
+                                docker rm review-app || true
+                                docker run -d -p 80:80 --name review-app ${env:DOCKER_IMAGE}:${env:VERSION}
+                            "
                         """
                     }
                 }
@@ -167,27 +148,41 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
                     script {
-                        powershell """
-                            $keyContent = [IO.File]::ReadAllText('${SSH_KEY}').Replace("`r`n","`n")
-                            [IO.File]::WriteAllText("${env:TEMP}\\staging-key.pem", $keyContent)
-                            $keyPath = "${env:TEMP}\\staging-key.pem"
-                            $acl = Get-Acl $keyPath
-                            $acl.SetAccessRuleProtection($true, $false)
-                            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-                                "${env:USERNAME}",
-                                "Read",
-                                "Allow"
-                            )
-                            $acl.SetAccessRule($rule)
-                            Set-Acl $keyPath $acl
-                        """
-                        
                         bat """
-                            ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker pull %DOCKER_IMAGE%:%VERSION%"
-                            ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker stop staging-app 2> nul || echo No container to stop"
-                            ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker rm staging-app 2> nul || echo No container to remove"
-                            ssh -i "%TEMP%\\staging-key.pem" -o StrictHostKeyChecking=no ubuntu@%STAGING_IP% "docker run -d -p 80:80 --name staging-app %DOCKER_IMAGE%:%VERSION%"
-                            del "%TEMP%\\staging-key.pem"
+                            icacls "${SSH_KEY}" /reset
+                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
+                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
+                            icacls "${SSH_KEY}" /inheritance:r
+                            
+                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:STAGING_IP} "
+                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
+                                docker stop staging-app || true
+                                docker rm staging-app || true
+                                docker run -d -p 80:80 --name staging-app ${env:DOCKER_IMAGE}:${env:VERSION}
+                            "
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Production') {
+            when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
+            steps {
+                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
+                    script {
+                        bat """
+                            icacls "${SSH_KEY}" /reset
+                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
+                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
+                            icacls "${SSH_KEY}" /inheritance:r
+                            
+                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:PROD_IP} "
+                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
+                                docker stop production-app || true
+                                docker rm production-app || true
+                                docker run -d -p 80:80 --name production-app ${env:DOCKER_IMAGE}:${env:VERSION}
+                            "
                         """
                     }
                 }
