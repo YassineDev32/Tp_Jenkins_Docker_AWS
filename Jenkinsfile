@@ -2,6 +2,7 @@ pipeline {
     agent any
     
     environment {
+        AWS_SSH_KEY = credentials('aws-key.pem')
         DOCKER_IMAGE = "yassine112/mon-app-web"
         VERSION = "${env.BUILD_NUMBER ?: 'latest'}"
         REVIEW_IP = "51.21.180.149"
@@ -20,32 +21,46 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                powershell 'docker build -t "${env:DOCKER_IMAGE}:${env:VERSION}" .'
+                script {
+                    powershell '''
+                        docker build -t "${env:DOCKER_IMAGE}:${env:VERSION}" .
+                    '''
+                }
             }
         }
 
         stage('Test Image') {
             steps {
-                powershell '''
-                    try {
-                        $imageExists = docker images -q "${env:DOCKER_IMAGE}:${env:VERSION}"
-                        if (-not $imageExists) { throw "Image not found" }
+                script {
+                    powershell '''
+                        try {
+                            # Verify image exists locally
+                            $imageExists = docker images -q "${env:DOCKER_IMAGE}:${env:VERSION}"
+                            if (-not $imageExists) {
+                                throw "Image ${env:DOCKER_IMAGE}:${env:VERSION} doesn't exist locally"
+                            }
 
-                        docker run -d -p 8081:80 --name test-container "${env:DOCKER_IMAGE}:${env:VERSION}"
-                        Start-Sleep -Seconds 10
-                        
-                        $response = Invoke-WebRequest -Uri "http://localhost:8081" -UseBasicParsing -ErrorAction Stop
-                        if ($response.StatusCode -ne 200) { throw "HTTP ${response.StatusCode}" }
-                        Write-Host "Test passed"
-                    } catch {
-                        Write-Host "Test failed: $_"
-                        docker logs test-container
-                        exit 1
-                    } finally {
-                        docker stop test-container -t 1 | Out-Null
-                        docker rm test-container -f | Out-Null
-                    }
-                '''
+                            # Run container
+                            docker run -d -p 8081:80 --name test-container "${env:DOCKER_IMAGE}:${env:VERSION}"
+                            Start-Sleep -Seconds 10
+                            
+                            # Test application
+                            $response = Invoke-WebRequest -Uri "http://localhost:8081" -UseBasicParsing -ErrorAction Stop
+                            if ($response.StatusCode -ne 200) { 
+                                throw "HTTP Status ${response.StatusCode}" 
+                            }
+                            Write-Host "Test passed successfully"
+                        } catch {
+                            Write-Host "Test failed: $_"
+                            docker logs test-container
+                            exit 1
+                        } finally {
+                            # Cleanup container
+                            docker stop test-container -t 1 | Out-Null
+                            docker rm test-container -f | Out-Null
+                        }
+                    '''
+                }
             }
         }
 
@@ -101,121 +116,57 @@ pipeline {
 
         stage('Push to Docker Hub') {
             steps {
-                powershell '''
-                    $maxRetries = 3
-                    $retryCount = 0
-                    do {
-                        docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
-                        if ($LASTEXITCODE -eq 0) { break }
-                        $retryCount++
-                        if ($retryCount -lt $maxRetries) {
-                            Start-Sleep -Seconds 10
-                            Write-Host "Retrying push ($retryCount/$maxRetries)..."
-                        }
-                    } while ($retryCount -lt $maxRetries)
+                script {
+                    powershell '''
+                        # Push with retries
+                        $maxRetries = 3
+                        $retryCount = 0
+                        do {
+                            docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-Host "Successfully pushed ${env:DOCKER_IMAGE}:${env:VERSION}"
+                                break
+                            }
+                            $retryCount++
+                            if ($retryCount -lt $maxRetries) {
+                                Start-Sleep -Seconds 10
+                                Write-Host "Retrying push ($retryCount/$maxRetries)..."
+                            }
+                        } while ($retryCount -lt $maxRetries)
 
-                    if ($retryCount -eq $maxRetries) {
-                        throw "Failed to push after $maxRetries attempts"
-                    }
-                '''
+                        if ($retryCount -eq $maxRetries) {
+                            throw "Failed to push after $maxRetries attempts"
+                        }
+                    '''
+                }
             }
         }
-
+                
         stage('Deploy to Review') {
             steps {
-                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
-                    script {
-                        bat """
-                            icacls "${SSH_KEY}" /reset
-                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
-                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
-                            icacls "${SSH_KEY}" /inheritance:r
-                            
-                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:REVIEW_IP} "
-                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                                docker stop review-app || true
-                                docker rm review-app || true
-                                docker run -d -p 80:80 --name review-app ${env:DOCKER_IMAGE}:${env:VERSION}
-                            "
-                        """
-                    }
-                }
-            }
-        }
+                script {
+                    withCredentials([file(credentialsId: 'aws-key', variable: 'SSH_KEY')]) {
+                        powershell '''
+                            # Use forward slashes for Windows compatibility
+                            $tempKey = "$env:TEMP/aws-key-${env:BUILD_NUMBER}.pem"
+                            Set-Content -Path $tempKey -Value $env:SSH_KEY
+                            icacls $tempKey /inheritance:r
+                            icacls $tempKey /grant:r "$env:USERNAME:R"
 
-        stage('Deploy to Staging') {
-            when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
-            steps {
-                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
-                    script {
-                        bat """
-                            icacls "${SSH_KEY}" /reset
-                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
-                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
-                            icacls "${SSH_KEY}" /inheritance:r
-                            
-                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:STAGING_IP} "
-                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                                docker stop staging-app || true
-                                docker rm staging-app || true
-                                docker run -d -p 80:80 --name staging-app ${env:DOCKER_IMAGE}:${env:VERSION}
-                            "
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Deploy to Production') {
-            when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
-            steps {
-                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
-                    script {
-                        bat """
-                            icacls "${SSH_KEY}" /reset
-                            icacls "${SSH_KEY}" /grant:r "NT AUTHORITY\\SYSTEM:(R)"
-                            icacls "${SSH_KEY}" /grant:r "%USERNAME%:(R)"
-                            icacls "${SSH_KEY}" /inheritance:r
-                            
-                            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no ubuntu@${env:PROD_IP} "
-                                docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
-                                docker stop production-app || true
-                                docker rm production-app || true
-                                docker run -d -p 80:80 --name production-app ${env:DOCKER_IMAGE}:${env:VERSION}
-                            "
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Deploy to Production') {
-            when { expression { currentBuild.resultIsBetterOrEqualTo('SUCCESS') } }
-            steps {
-                withCredentials([file(credentialsId: 'aws-key.pem', variable: 'SSH_KEY')]) {
-                    script {
-                        powershell """
-                            $keyContent = [IO.File]::ReadAllText('${SSH_KEY}').Replace("`r`n","`n")
-                            [IO.File]::WriteAllText("${env:TEMP}\\production-key.pem", $keyContent)
-                            $keyPath = "${env:TEMP}\\production-key.pem"
-                            $acl = Get-Acl $keyPath
-                            $acl.SetAccessRuleProtection($true, $false)
-                            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-                                "${env:USERNAME}",
-                                "Read",
-                                "Allow"
-                            )
-                            $acl.SetAccessRule($rule)
-                            Set-Acl $keyPath $acl
-                        """
-                        
-                        bat """
-                            ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker pull %DOCKER_IMAGE%:%VERSION%"
-                            ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker stop production-app 2> nul || echo No container to stop"
-                            ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker rm production-app 2> nul || echo No container to remove"
-                            ssh -i "%TEMP%\\production-key.pem" -o StrictHostKeyChecking=no ubuntu@%PROD_IP% "docker run -d -p 80:80 --name production-app %DOCKER_IMAGE%:%VERSION%"
-                            del "%TEMP%\\production-key.pem"
-                        """
+                            try {
+                                ssh -i $tempKey -o StrictHostKeyChecking=no ubuntu@${env:REVIEW_IP} "
+                                    docker pull ${env:DOCKER_IMAGE}:${env:VERSION}
+                                    docker stop review-app || true
+                                    docker rm review-app || true
+                                    docker run -d -p 80:80 --name review-app ${env:DOCKER_IMAGE}:${env:VERSION}
+                                "
+                            } catch {
+                                Write-Host "Deployment failed: $_"
+                                exit 1
+                            } finally {
+                                Remove-Item $tempKey -Force -ErrorAction SilentlyContinue
+                            }
+                        '''
                     }
                 }
             }
