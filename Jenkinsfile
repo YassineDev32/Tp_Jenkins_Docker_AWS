@@ -68,14 +68,14 @@ pipeline {
         stage('Login') {
 
 			steps {
-				sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
+				powershell 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
 			}
 		}
 
 		stage('Push') {
 
 			steps {
-				sh 'docker push yassine112/mon-app-web:latest'
+				powershell 'docker push yassine112/mon-app-web:latest'
 			}
 		}
                 
