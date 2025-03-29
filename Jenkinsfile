@@ -2,7 +2,7 @@ pipeline {
     agent any
     
     environment {
-        AWS_SSH_KEY = credentials('aws-key.pem')  // Utilisation correcte des credentials
+        AWS_SSH_KEY = credentials('aws-key.pem')
         DOCKER_IMAGE = "yassine112/mon-app-web"
         VERSION = "${env.BUILD_NUMBER ?: 'latest'}"
         REVIEW_IP = "51.21.180.149"
@@ -34,17 +34,17 @@ pipeline {
                 script {
                     powershell '''
                         try {
-                            # Vérifier si l'image existe localement
+                            # Verify image exists locally
                             $imageExists = docker images -q "${env:DOCKER_IMAGE}:${env:VERSION}"
                             if (-not $imageExists) {
-                                throw "L'image ${env:DOCKER_IMAGE}:${env:VERSION} n'existe pas localement."
+                                throw "Image ${env:DOCKER_IMAGE}:${env:VERSION} doesn't exist locally"
                             }
 
-                            # Lancer le conteneur
+                            # Run container
                             docker run -d -p 8081:80 --name test-container "${env:DOCKER_IMAGE}:${env:VERSION}"
-                            Start-Sleep -s 10
+                            Start-Sleep -Seconds 10
                             
-                            # Tester l'application
+                            # Test application
                             $response = Invoke-WebRequest -Uri "http://localhost:8081" -UseBasicParsing -ErrorAction Stop
                             if ($response.StatusCode -ne 200) { 
                                 throw "HTTP Status ${response.StatusCode}" 
@@ -55,7 +55,7 @@ pipeline {
                             docker logs test-container
                             exit 1
                         } finally {
-                            # Nettoyage du conteneur
+                            # Cleanup container
                             docker stop test-container -t 1 | Out-Null
                             docker rm test-container -f | Out-Null
                         }
@@ -64,25 +64,23 @@ pipeline {
             }
         }
 
-        stages {
-            stage('Push to Docker Hub') {
-                steps {
-                    script {
-                        withCredentials([
-                            usernamePassword(
-                                credentialsId: 'docker-hub-creds',
-                                usernameVariable: 'DOCKER_USER',
-                                passwordVariable: 'DOCKER_PASS'
-                            )
-                        ]) {
-                            sh '''
-                                # Login to Docker Hub
-                                echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-    
-                                # Push the image (replace with your actual image name)
-                                docker push yassine112/mon-app-web:latest
-                            '''
-                        }
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'docker-hub-creds',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        )
+                    ]) {
+                        powershell '''
+                            # Login to Docker Hub
+                            echo $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
+                            
+                            # Tag and push the image
+                            docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
+                        '''
                     }
                 }
             }
@@ -93,7 +91,7 @@ pipeline {
                 script {
                     withCredentials([file(credentialsId: 'aws-key', variable: 'SSH_KEY')]) {
                         powershell '''
-                            $tempKey = "$env:TEMP\\aws-key-${env:BUILD_NUMBER}.pem"
+                            $tempKey = "$env:TEMP\aws-key-${env:BUILD_NUMBER}.pem"
                             Set-Content -Path $tempKey -Value $env:SSH_KEY
                             icacls $tempKey /inheritance:r
                             icacls $tempKey /grant:r "$env:USERNAME:R"
