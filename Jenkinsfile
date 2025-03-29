@@ -65,10 +65,6 @@ pipeline {
         }
 
         stage('Push to Docker Hub') {
-            environment {
-                // This helps Docker use the correct config location
-                DOCKER_CONFIG = "${WORKSPACE}/.docker"
-            }
             steps {
                 script {
                     withCredentials([
@@ -79,46 +75,42 @@ pipeline {
                         )
                     ]) {
                         powershell '''
-                            # Clean any existing credentials
-                            Write-Host "=== Resetting Docker configuration ==="
+                            # Clean existing credentials
                             docker logout
-                            Remove-Item -Path "$env:DOCKER_CONFIG" -Recurse -Force -ErrorAction SilentlyContinue
-                            New-Item -Path "$env:DOCKER_CONFIG" -ItemType Directory -Force | Out-Null
+                            Remove-Item -Path "$env:USERPROFILE\.docker\config.json" -Force -ErrorAction SilentlyContinue
         
-                            # Test connectivity to Docker Hub
-                            Write-Host "=== Testing Docker Hub connectivity ==="
-                            if (-not (Test-NetConnection registry-1.docker.io -Port 443 -InformationLevel Quiet)) {
-                                throw "Cannot connect to Docker Hub registry"
-                            }
+                            # Method 1: Using echo (most reliable)
+                            echo $env:DOCKER_PASS | docker login -u $env:DOCKER_USER --password-stdin
         
-                            # Login using username/password
-                            Write-Host "=== Authenticating to Docker Hub ==="
-                            $securePass = ConvertTo-SecureString $env:DOCKER_PASS -AsPlainText -Force
-                            $credential = New-Object System.Management.Automation.PSCredential($env:DOCKER_USER, $securePass)
-                            
-                            $loginOutput = docker login -u $credential.UserName --password-stdin 2>&1 <<< "$($credential.GetNetworkCredential().Password)"
-                            
+                            # Alternative Method 2: Using temporary file (if echo fails)
                             if ($LASTEXITCODE -ne 0) {
-                                Write-Host "LOGIN ERROR OUTPUT: $loginOutput"
-                                throw "Docker authentication failed"
+                                $tempFile = New-TemporaryFile
+                                try {
+                                    $env:DOCKER_PASS | Out-File -FilePath $tempFile -Encoding ascii
+                                    Get-Content $tempFile | docker login -u $env:DOCKER_USER --password-stdin
+                                }
+                                finally {
+                                    Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
+                                }
                             }
-                            Write-Host "Successfully logged in to Docker Hub"
         
-                            # Push with retries
+                            if ($LASTEXITCODE -ne 0) {
+                                throw "Docker login failed"
+                            }
+        
+                            # Push image with retries
                             $maxRetries = 3
                             $retryCount = 0
                             do {
-                                Write-Host "Pushing image (attempt $($retryCount + 1))..."
                                 docker push "${env:DOCKER_IMAGE}:${env:VERSION}"
-                                
                                 if ($LASTEXITCODE -eq 0) {
                                     Write-Host "Image pushed successfully!"
                                     break
                                 }
-                                
                                 $retryCount++
                                 if ($retryCount -lt $maxRetries) {
-                                    Start-Sleep -Seconds 10
+                                    Start-Sleep -Seconds 5
+                                    Write-Host "Retrying push ($retryCount/$maxRetries)..."
                                 }
                             } while ($retryCount -lt $maxRetries)
         
